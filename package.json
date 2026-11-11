@@ -1,55 +1,78 @@
 {
   "name": "iobroker.rpi2",
+  "version": "5.0.0",
   "description": "RPI-Monitor for ioBroker Installations",
-  "version": "0.3.2",
-  "engines": {
-    "node": ">=0.12"
-  },
-  "author": {
-    "name": "husky-koglhof",
-    "email": "husky.koglhof@icloud.com"
-  },
+  "author": "husky-koglhof <husky.koglhof@icloud.com>",
   "contributors": [
-    "versteckt <husky.koglhof@icloud.com>"
+    "versteckt <husky.koglhof@icloud.com>",
+    "Garfonso <garfonso@mobo.info>",
+    "iobroker-community-adapters <iobroker-community-adapters@gmx.de>"
   ],
-  "optionalDependencies": {
-    "rpi-gpio": "^0.7.0"
-  },
-  "dependencies": {
-    "sync-exec": "^0.6.2"
-  },
-  "devDependencies": {
-    "grunt": "^1.0.1",
-    "grunt-replace": "^1.0.1",
-    "grunt-contrib-jshint": "^1.1.0",
-    "grunt-jscs": "^3.0.1",
-    "grunt-http": "^2.2.0",
-    "mocha": "^3.5.3",
-    "chai": "^4.1.2"
-  },
-  "homepage": "https://github.com/ioBroker/ioBroker.rpi2",
+  "homepage": "https://github.com/iobroker-community-adapters/ioBroker.rpi2",
   "license": "MIT",
   "keywords": [
     "ioBroker",
-    "monitoring",
     "raspberry",
-    "orangepi",
-    "odroid",
-    "bananapi"
+    "monitoring",
+    "gpio",
+    "raspian"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/ioBroker/ioBroker.rpi2"
+    "url": "https://github.com/iobroker-community-adapters/ioBroker.rpi2"
+  },
+  "optionalDependencies": {
+    "node-dht-sensor": "^0.5.5"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@garfonso/opengpio": "^2.1.3",
+    "@iobroker/adapter-core": "^3.4.3"
+  },
+  "devDependencies": {
+    "@alcalzone/release-script": "^5.2.1",
+    "@alcalzone/release-script-plugin-iobroker": "^5.2.0",
+    "@alcalzone/release-script-plugin-license": "^5.2.2",
+    "@alcalzone/release-script-plugin-manual-review": "^5.2.0",
+    "@iobroker/adapter-dev": "^1.5.0",
+    "@iobroker/eslint-config": "^2.3.4",
+    "@iobroker/testing": "^6.3.2",
+    "@tsconfig/node22": "^22.0.6",
+    "@types/node": "^22.19.0",
+    "@types/proxyquire": "^1.3.31",
+    "proxyquire": "^2.1.3",
+    "typescript": "~5.9.3"
   },
   "os": [
     "linux"
   ],
   "bugs": {
-    "url": "https://github.com/ioBroker/ioBroker.rpi2/issues"
+    "url": "https://github.com/iobroker-community-adapters/ioBroker.rpi2/issues"
   },
   "main": "main.js",
+  "files": [
+    "admin{,/!(src)/**}/!(tsconfig|tsconfig.*|.eslintrc).{json,json5}",
+    "admin{,/!(src)/**}/*.{html,css,png,svg,jpg,js}",
+    "lib/",
+    "www/",
+    "io-package.json",
+    "LICENSE",
+    "main.js"
+  ],
   "scripts": {
-    "test": "node node_modules/mocha/bin/mocha"
+    "test:js": "mocha --config test/mocharc.custom.json \"{!(node_modules|test)/**/*.test.js,*.test.js,test/**/test!(PackageFiles|Startup).js}\"",
+    "test:package": "mocha test/package --exit",
+    "test:integration": "mocha test/integration --exit",
+    "test": "npm run test:js && npm run test:package",
+    "check": "tsc --noEmit -p tsconfig.check.json",
+    "lint": "eslint -c eslint.config.mjs .",
+    "translate": "translate-adapter",
+    "release": "release-script",
+    "release-patch": "release-script patch --yes",
+    "release-minor": "release-script minor --yes",
+    "release-major": "release-script major --yes"
   },
   "readmeFilename": "README.md"
 }

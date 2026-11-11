@@ -1,215 +1,328 @@
 {
-    "common": {
-        "name":                     "rpi2",
-        "title":                    "RPI-Monitor",
-        "desc":                     {
-			"en": "RPI-Monitor for ioBroker Installations",
-			"de": "RPI-Monitor für ioBroker",
-			"ru": "RPI-Монитор для ioBroker"
-		},
-        "version":                  "0.3.2",
-        "news": {
-            "0.3.2": {
-                "en": "fixed Mem available readings on Stretch",
-                "de": "mem available bei strech gefixt",
-                "ru": "fixed Mem available readings on Stretch"
-            },
-			"0.3.1": {
-                "en": "Fixup swap_used calculation.",
-                "de": "Korrigiere swap_used Kalkulation",
-                "ru": "Исправлено вычисление swap_used"
-            },
-            "0.3.0": {
-                "en": "Add GPIO direction indication",
-                "de": "GPIO Richtung States hinzugefügt",
-                "ru": "Добавлены состояния для индикации направления GPIO"
-            },
-            "0.2.2": {
-                "en": "Use BCM enumeration",
-                "de": "Benutze BCM Numerierung",
-                "ru": "Используется BCM нумерация"
-            },
-            "0.2.1": {
-                "en": "fix start of adapter",
-                "de": "Korrigiert Adapterstart",
-                "ru": "Исправлен старт драйвера"
-            },
-            "0.2.0": {
-                "en": "implement GPIOs control",
-                "de": "Implementiert die Steuerung von GPIOs",
-                "ru": "Добавлено управление GPIOs"
-            }
-        },
-        "mode":                     "daemon",
-        "platform":                 "javascript/Node.js",
-        "os":                       ["linux"],
-        "loglevel":                 "info",
-        "keywords":                 ["ioBroker", "monitoring", "raspberry", "orangepi", "odroid", "bananapi", "gpio"],
-        "main":                     "main.js",
-        "authors": [
-            "Christian Baumgartner", "husky-koglhof <husky.koglhof@icloud.com>"
-        ],
-        "license":                  "MIT",
-        "singletonHost":             true,
-        "readme":                   "https://github.com/ioBroker/ioBroker.rpi2/blob/master/README.md",
-        "icon":                     "rpi.png",
-        "type":                     "hardware",
-	    "enabled":					true,
-        "config":{
-            "minWidth":   650,
-            "width":      700,
-            "minHeight":  600,
-            "height":     600
-        },
-        "extIcon":                  "https://raw.githubusercontent.com/ioBroker/ioBroker.rpi2/master/admin/rpi.png"
+  "common": {
+    "name": "rpi2",
+    "version": "5.0.0",
+    "news": {
+      "5.0.0": {
+        "en": "**BREAKING**: 'Pull Up' and 'Pull Down' switch on the internal pull resistors of inputs (#31). Before, 'Pull Up' only inverted the value; it still does. If you used 'Pull Up' just to invert an input that is switched to 3.3 V, the input now stays high: untick 'Pull Up' and tick 'Invert' instead. Also check inputs with 'Pull Up' and an external pull-down resistor.\n**BREAKING**: Inputs are debounced by the kernel. A change is reported once the input has been stable for the debounce time, instead of right away followed by a pause. Changes therefore arrive later by that time, and pulses shorter than the debounce time (e.g. from S0 or reed contact meters) are ignored - lower the debounce time below the shortest pulse. In return a short glitch no longer leaves the state wrong.\n**BREAKING**: `temperature.nvme_temp` is replaced by `temperature.disk_temp`. It is read with smartmontools from the first NVMe or SATA/USB drive that reports a temperature. The old state is deleted. Install `smartmontools` and replace the old `nvme` sudo rule by the new one from the README.\n**NEW**: DHT sensors also report the dew point (`gpio.N.dewpoint`), calculated from temperature and humidity.\n**ENHANCED**: An input that cannot be set up no longer disables all other GPIOs; the reason is logged.\nA missing drive, WLAN or sudo rule is no longer logged as an error, and no longer shows a disk temperature of 0.\nAdapter requires node.js >= 22.19.0 now.\nRemoved `python` from the OS dependencies, there is no such package on current Debian.\nDHT sensors: the README and the log messages recommend the Linux kernel driver, the instructions for rebuilding node-dht-sensor are removed. An already rebuilt node-dht-sensor keeps working.\nThe check for libgpiod 2.2 moved from the adapter's preinstall script into `@garfonso/opengpio`.\nRemoved the unused `ci` dependency, updated dependencies and added missing translations in the admin page.",
+        "de": "**BREAKING**: 'Pull Up' und 'Pull Down' schalten die internen Pull-Widerstände der Eingänge ein (#31). Bisher hat 'Pull Up' nur den Wert umgedreht; das tut es weiterhin. Wer 'Pull Up' nur zum Umdrehen eines Eingangs genutzt hat, der gegen 3,3 V geschaltet wird: Der Eingang bleibt jetzt dauerhaft high. Haken bei 'Pull Up' entfernen und stattdessen 'Umkehren' anhaken. Bitte auch Eingänge mit 'Pull Up' und externem Pull-down-Widerstand prüfen.\n**BREAKING**: Eingänge werden vom Kernel entprellt. Eine Änderung wird gemeldet, sobald der Eingang für die Entprellzeit stabil war, statt sofort mit anschließender Pause. Änderungen kommen daher um diese Zeit später an, und Impulse, die kürzer als die Entprellzeit sind (z. B. von S0- oder Reedkontakt-Zählern), werden ignoriert - Entprellzeit kürzer als den kürzesten Impuls einstellen. Dafür bleibt der Datenpunkt bei einer kurzen Störung nicht mehr auf einem falschen Wert hängen.\n**BREAKING**: `temperature.nvme_temp` wird durch `temperature.disk_temp` ersetzt. Der Wert wird mit smartmontools vom ersten NVMe- oder SATA/USB-Laufwerk gelesen, das eine Temperatur liefert. Der alte Datenpunkt wird gelöscht. `smartmontools` installieren und die alte `nvme`-sudo-Regel durch die neue aus der README ersetzen.\n**NEU**: DHT-Sensoren liefern auch den Taupunkt (`gpio.N.dewpoint`), berechnet aus Temperatur und Luftfeuchte.\n**ENHANCED**: Ein Eingang, der nicht eingerichtet werden kann, legt nicht mehr alle anderen GPIOs lahm; der Grund wird geloggt.\nEin fehlendes Laufwerk, WLAN oder eine fehlende sudo-Regel wird nicht mehr als Fehler geloggt, und es wird keine Laufwerkstemperatur von 0 mehr angezeigt.\nDer Adapter benötigt jetzt node.js >= 22.19.0.\n`python` aus den OS-Abhängigkeiten entfernt, unter aktuellem Debian gibt es dieses Paket nicht.\nDHT-Sensoren: README und Log-Meldungen empfehlen den Linux-Kerneltreiber, die Anleitung zum Neubauen von node-dht-sensor wurde entfernt. Ein bereits neu gebautes node-dht-sensor funktioniert weiter.\nDie Prüfung auf libgpiod 2.2 ist vom preinstall-Skript des Adapters nach `@garfonso/opengpio` umgezogen.\nUngenutzte Abhängigkeit `ci` entfernt, Abhängigkeiten aktualisiert und fehlende Übersetzungen in der Admin-Seite ergänzt.",
+        "ru": "**BREAKING**: 'Подтяжка вверх (pull-up)' и 'Подтяжка вниз (pull-down)' включают внутренние подтягивающие резисторы входов (#31). Раньше 'Подтяжка вверх (pull-up)' только инвертировала значение; это сохраняется. Если вы использовали её только для инвертирования входа, который замыкается на 3,3 В, вход теперь всегда остаётся в высоком уровне: снимите 'Подтяжка вверх (pull-up)' и отметьте 'Инвертировать'. Также проверьте входы с подтяжкой вверх и внешним стягивающим резистором.\n**BREAKING**: Дребезг входов подавляет ядро. Изменение сообщается, когда вход оставался стабильным в течение времени антидребезга, а не сразу с последующей паузой. Поэтому изменения приходят на это время позже, а импульсы короче этого времени (например, от счётчиков S0 или с герконом) игнорируются - установите время антидребезга меньше самого короткого импульса. Зато короткая помеха больше не оставляет неверное значение.\n**BREAKING**: `temperature.nvme_temp` заменён на `temperature.disk_temp`. Значение считывается через smartmontools с первого накопителя NVMe или SATA/USB, который сообщает температуру. Старая точка данных удаляется. Установите `smartmontools` и замените старое правило sudo для `nvme` новым из README.\n**NEW**: Датчики DHT также сообщают точку росы (`gpio.N.dewpoint`), вычисленную по температуре и влажности.\n**ENHANCED**: Вход, который не удалось настроить, больше не отключает все остальные GPIO; причина записывается в журнал.\nОтсутствующий накопитель, WLAN или правило sudo больше не записываются в журнал как ошибка, и температура накопителя 0 больше не показывается.\nТеперь адаптеру требуется node.js >= 22.19.0.\n`python` удалён из зависимостей ОС, в текущем Debian такого пакета нет.\nДатчики DHT: README и сообщения в журнале рекомендуют драйвер ядра Linux, инструкция по пересборке node-dht-sensor удалена. Уже пересобранный node-dht-sensor продолжает работать.\nПроверка наличия libgpiod 2.2 перенесена из скрипта preinstall адаптера в `@garfonso/opengpio`.\nУдалена неиспользуемая зависимость `ci`, обновлены зависимости и добавлены недостающие переводы на странице настроек.",
+        "pt": "**BREAKING**: 'Pull-up' e 'Pull-down' ligam as resistências pull internas das entradas (#31). Antes, 'Pull-up' apenas invertia o valor; continua a fazê-lo. Se usou 'Pull-up' só para inverter uma entrada ligada a 3,3 V, a entrada fica agora sempre em nível alto: desmarque 'Pull-up' e marque 'Invertido'. Verifique também entradas com 'Pull-up' e uma resistência pull-down externa.\n**BREAKING**: O debounce das entradas é feito pelo kernel. Uma alteração é comunicada quando a entrada esteve estável durante o tempo de debounce, em vez de imediatamente seguida de uma pausa. As alterações chegam por isso esse tempo mais tarde, e impulsos mais curtos do que o tempo de debounce (por exemplo de contadores S0 ou de contacto reed) são ignorados - defina o tempo de debounce abaixo do impulso mais curto. Em troca, uma perturbação curta já não deixa o estado errado.\n**BREAKING**: `temperature.nvme_temp` foi substituído por `temperature.disk_temp`. O valor é lido com o smartmontools da primeira unidade NVMe ou SATA/USB que informa uma temperatura. O estado antigo é apagado. Instale o `smartmontools` e substitua a antiga regra sudo do `nvme` pela nova do README.\n**NEW**: Os sensores DHT também informam o ponto de orvalho (`gpio.N.dewpoint`), calculado a partir da temperatura e da humidade.\n**ENHANCED**: Uma entrada que não pode ser configurada já não desativa todos os outros GPIOs; o motivo é registado no log.\nUma unidade, WLAN ou regra sudo ausente já não é registada como erro, e já não é mostrada uma temperatura de disco de 0.\nO adaptador requer agora node.js >= 22.19.0.\n`python` removido das dependências do sistema operativo; esse pacote não existe no Debian atual.\nSensores DHT: o README e as mensagens de registo recomendam o driver do kernel Linux; as instruções para recompilar o node-dht-sensor foram removidas. Um node-dht-sensor já recompilado continua a funcionar.\nA verificação da libgpiod 2.2 passou do script preinstall do adaptador para o `@garfonso/opengpio`.\nRemovida a dependência não utilizada `ci`, dependências atualizadas e traduções em falta adicionadas na página de administração.",
+        "nl": "**BREAKING**: 'Pull-up' en 'Pull-down' schakelen de interne pull-weerstanden van ingangen in (#31). Voorheen keerde 'Pull-up' alleen de waarde om; dat doet het nog steeds. Als u 'Pull-up' alleen gebruikte om een ingang om te keren die naar 3,3 V wordt geschakeld, blijft de ingang nu hoog: vink 'Pull-up' uit en vink 'Omkeren' aan. Controleer ook ingangen met 'Pull-up' en een externe pull-down-weerstand.\n**BREAKING**: Ingangen worden door de kernel ontdenderd. Een wijziging wordt gemeld zodra de ingang gedurende de ontdendertijd stabiel is geweest, in plaats van direct gevolgd door een pauze. Wijzigingen komen daardoor zoveel later binnen, en pulsen korter dan de ontdendertijd (bijv. van S0- of reedcontactmeters) worden genegeerd - stel de ontdendertijd korter in dan de kortste puls. Daarentegen blijft de status bij een korte storing niet meer verkeerd staan.\n**BREAKING**: `temperature.nvme_temp` is vervangen door `temperature.disk_temp`. De waarde wordt met smartmontools gelezen van de eerste NVMe- of SATA/USB-schijf die een temperatuur levert. Het oude datapunt wordt verwijderd. Installeer `smartmontools` en vervang de oude `nvme`-sudo-regel door de nieuwe uit de README.\n**NEW**: DHT-sensoren leveren ook het dauwpunt (`gpio.N.dewpoint`), berekend uit temperatuur en luchtvochtigheid.\n**ENHANCED**: Een ingang die niet kan worden ingesteld, schakelt niet langer alle andere GPIO's uit; de reden wordt gelogd.\nEen ontbrekende schijf, WLAN of sudo-regel wordt niet meer als fout gelogd, en er wordt geen schijftemperatuur van 0 meer getoond.\nDe adapter vereist nu node.js >= 22.19.0.\n`python` verwijderd uit de OS-afhankelijkheden, dit pakket bestaat niet in het huidige Debian.\nDHT-sensoren: de README en de logmeldingen raden het Linux-kernelstuurprogramma aan, de instructies voor het opnieuw bouwen van node-dht-sensor zijn verwijderd. Een al opnieuw gebouwde node-dht-sensor blijft werken.\nDe controle op libgpiod 2.2 is verplaatst van het preinstall-script van de adapter naar `@garfonso/opengpio`.\nOngebruikte afhankelijkheid `ci` verwijderd, afhankelijkheden bijgewerkt en ontbrekende vertalingen in de beheerpagina toegevoegd.",
+        "fr": "**BREAKING**: 'Pull-up' et 'Pull-down' activent les résistances de rappel internes des entrées (#31). Auparavant, 'Pull-up' inversait seulement la valeur ; c'est toujours le cas. Si vous utilisiez 'Pull-up' uniquement pour inverser une entrée commutée vers 3,3 V, l'entrée reste désormais à l'état haut : décochez 'Pull-up' et cochez 'Inverser'. Vérifiez aussi les entrées avec 'Pull-up' et une résistance pull-down externe.\n**BREAKING**: L'anti-rebond des entrées est assuré par le noyau. Un changement est signalé une fois l'entrée stable pendant la durée d'anti-rebond, au lieu de l'être immédiatement puis suivi d'une pause. Les changements arrivent donc d'autant plus tard, et les impulsions plus courtes que cette durée (par exemple de compteurs S0 ou à contact reed) sont ignorées - réglez la durée d'anti-rebond en dessous de l'impulsion la plus courte. En contrepartie, une perturbation brève ne laisse plus l'état erroné.\n**BREAKING** : `temperature.nvme_temp` est remplacé par `temperature.disk_temp`. La valeur est lue avec smartmontools sur le premier disque NVMe ou SATA/USB qui fournit une température. L'ancien état est supprimé. Installez `smartmontools` et remplacez l'ancienne règle sudo pour `nvme` par la nouvelle du README.\n**NEW** : les capteurs DHT fournissent aussi le point de rosée (`gpio.N.dewpoint`), calculé à partir de la température et de l'humidité.\n**ENHANCED**: Une entrée qui ne peut pas être configurée ne désactive plus tous les autres GPIO ; la raison est journalisée.\nUn disque, un WLAN ou une règle sudo manquant n'est plus journalisé comme erreur, et une température de disque de 0 n'est plus affichée.\nL'adaptateur nécessite désormais node.js >= 22.19.0.\n`python` retiré des dépendances système, ce paquet n'existe pas dans la version actuelle de Debian.\nCapteurs DHT : le README et les messages du journal recommandent le pilote du noyau Linux, les instructions pour recompiler node-dht-sensor ont été supprimées. Un node-dht-sensor déjà recompilé continue de fonctionner.\nLa vérification de libgpiod 2.2 est passée du script preinstall de l'adaptateur à `@garfonso/opengpio`.\nSuppression de la dépendance inutilisée `ci`, mise à jour des dépendances et ajout des traductions manquantes dans la page d'administration.",
+        "it": "**BREAKING**: 'Pull-up' e 'Pull-down' attivano le resistenze di pull interne degli ingressi (#31). Prima 'Pull-up' invertiva solo il valore; lo fa ancora. Se avete usato 'Pull-up' solo per invertire un ingresso collegato a 3,3 V, ora l'ingresso resta sempre alto: deselezionate 'Pull-up' e selezionate 'Invertire'. Controllate anche gli ingressi con 'Pull-up' e una resistenza pull-down esterna.\n**BREAKING**: L'antirimbalzo degli ingressi è gestito dal kernel. Una modifica viene segnalata quando l'ingresso è rimasto stabile per il tempo di antirimbalzo, invece che subito seguita da una pausa. Le modifiche arrivano quindi altrettanto più tardi, e gli impulsi più brevi di questo tempo (ad esempio da contatori S0 o a contatto reed) vengono ignorati - impostate il tempo di antirimbalzo al di sotto dell'impulso più breve. In compenso un breve disturbo non lascia più lo stato errato.\n**BREAKING**: `temperature.nvme_temp` è sostituito da `temperature.disk_temp`. Il valore viene letto con smartmontools dal primo disco NVMe o SATA/USB che fornisce una temperatura. Il vecchio stato viene eliminato. Installare `smartmontools` e sostituire la vecchia regola sudo per `nvme` con quella nuova del README.\n**NEW**: i sensori DHT forniscono anche il punto di rugiada (`gpio.N.dewpoint`), calcolato da temperatura e umidità.\n**ENHANCED**: Un ingresso che non può essere configurato non disattiva più tutti gli altri GPIO; il motivo viene registrato nel log.\nUn disco, una WLAN o una regola sudo mancante non viene più registrato come errore e non viene più mostrata una temperatura del disco pari a 0.\nL'adattatore ora richiede node.js >= 22.19.0.\n`python` rimosso dalle dipendenze del sistema operativo, questo pacchetto non esiste nel Debian attuale.\nSensori DHT: il README e i messaggi di log consigliano il driver del kernel Linux, le istruzioni per ricompilare node-dht-sensor sono state rimosse. Un node-dht-sensor già ricompilato continua a funzionare.\nIl controllo di libgpiod 2.2 è stato spostato dallo script preinstall dell'adattatore a `@garfonso/opengpio`.\nRimossa la dipendenza inutilizzata `ci`, aggiornate le dipendenze e aggiunte le traduzioni mancanti nella pagina di amministrazione.",
+        "es": "**BREAKING**: 'Pull-up' y 'Pull-down' activan las resistencias pull internas de las entradas (#31). Antes, 'Pull-up' solo invertía el valor; lo sigue haciendo. Si usó 'Pull-up' solo para invertir una entrada que se conecta a 3,3 V, la entrada queda ahora siempre en nivel alto: desmarque 'Pull-up' y marque 'Invertir'. Compruebe también las entradas con 'Pull-up' y una resistencia pull-down externa.\n**BREAKING**: El antirrebote de las entradas lo hace el kernel. Un cambio se notifica cuando la entrada ha permanecido estable durante el tiempo de antirrebote, en lugar de inmediatamente seguido de una pausa. Por eso los cambios llegan ese tiempo más tarde, y los impulsos más cortos que ese tiempo (por ejemplo de contadores S0 o de contacto reed) se ignoran: ajuste el tiempo de antirrebote por debajo del impulso más corto. A cambio, una perturbación breve ya no deja el estado erróneo.\n**BREAKING**: `temperature.nvme_temp` se sustituye por `temperature.disk_temp`. El valor se lee con smartmontools de la primera unidad NVMe o SATA/USB que informa una temperatura. El estado antiguo se elimina. Instale `smartmontools` y sustituya la antigua regla sudo de `nvme` por la nueva del README.\n**NEW**: Los sensores DHT también informan el punto de rocío (`gpio.N.dewpoint`), calculado a partir de la temperatura y la humedad.\n**ENHANCED**: Una entrada que no se puede configurar ya no desactiva todos los demás GPIO; el motivo se registra en el log.\nUna unidad, WLAN o regla sudo que falte ya no se registra como error, y ya no se muestra una temperatura de disco de 0.\nEl adaptador requiere ahora node.js >= 22.19.0.\nSe eliminó `python` de las dependencias del sistema operativo; ese paquete no existe en el Debian actual.\nSensores DHT: el README y los mensajes del registro recomiendan el controlador del kernel de Linux; se han eliminado las instrucciones para recompilar node-dht-sensor. Un node-dht-sensor ya recompilado sigue funcionando.\nLa comprobación de libgpiod 2.2 se ha trasladado del script preinstall del adaptador a `@garfonso/opengpio`.\nSe ha eliminado la dependencia no utilizada `ci`, se han actualizado las dependencias y se han añadido las traducciones que faltaban en la página de administración.",
+        "pl": "**BREAKING**: 'Pull-up' i 'Pull-down' włączają wewnętrzne rezystory podciągające wejść (#31). Wcześniej 'Pull-up' tylko odwracał wartość; nadal to robi. Jeśli używano 'Pull-up' tylko do odwrócenia wejścia przełączanego do 3,3 V, wejście pozostaje teraz w stanie wysokim: odznacz 'Pull-up' i zaznacz 'Odwracać'. Sprawdź też wejścia z 'Pull-up' i zewnętrznym rezystorem ściągającym.\n**BREAKING**: Drgania styków na wejściach eliminuje jądro. Zmiana jest zgłaszana, gdy wejście było stabilne przez czas eliminacji drgań, a nie od razu z następującą przerwą. Zmiany docierają więc o ten czas później, a impulsy krótsze od tego czasu (np. z liczników S0 lub kontaktronowych) są ignorowane - ustaw czas eliminacji drgań krótszy niż najkrótszy impuls. W zamian krótkie zakłócenie nie pozostawia już błędnego stanu.\n**BREAKING**: `temperature.nvme_temp` został zastąpiony przez `temperature.disk_temp`. Wartość jest odczytywana za pomocą smartmontools z pierwszego dysku NVMe lub SATA/USB, który podaje temperaturę. Stary stan jest usuwany. Zainstaluj `smartmontools` i zastąp starą regułę sudo dla `nvme` nową z README.\n**NEW**: Czujniki DHT podają też punkt rosy (`gpio.N.dewpoint`), obliczany z temperatury i wilgotności.\n**ENHANCED**: Wejście, którego nie da się skonfigurować, nie wyłącza już wszystkich pozostałych GPIO; przyczyna jest zapisywana w logu.\nBrak dysku, WLAN lub reguły sudo nie jest już logowany jako błąd i nie jest już wyświetlana temperatura dysku 0.\nAdapter wymaga teraz node.js >= 22.19.0.\nUsunięto `python` z zależności systemowych, w aktualnym Debianie nie ma takiego pakietu.\nCzujniki DHT: README i komunikaty w logu zalecają sterownik jądra Linux, instrukcja ponownego budowania node-dht-sensor została usunięta. Już przebudowany node-dht-sensor nadal działa.\nSprawdzanie libgpiod 2.2 przeniesiono ze skryptu preinstall adaptera do `@garfonso/opengpio`.\nUsunięto nieużywaną zależność `ci`, zaktualizowano zależności i dodano brakujące tłumaczenia na stronie administracyjnej.",
+        "uk": "**BREAKING**: 'Підтягування вгору (pull-up)' і 'Підтягування вниз (pull-down)' вмикають внутрішні підтягувальні резистори входів (#31). Раніше 'Підтягування вгору (pull-up)' лише інвертувало значення; це зберігається. Якщо ви використовували його лише для інвертування входу, що замикається на 3,3 В, вхід тепер завжди залишається у високому рівні: зніміть 'Підтягування вгору (pull-up)' і позначте 'Інвертувати'. Також перевірте входи з підтягуванням вгору та зовнішнім стягувальним резистором.\n**BREAKING**: Брязкіт контактів на входах усуває ядро. Зміна повідомляється, коли вхід залишався стабільним протягом часу антибрязкоту, а не одразу з подальшою паузою. Тому зміни надходять на цей час пізніше, а імпульси, коротші за цей час (наприклад, від лічильників S0 або з герконом), ігноруються - встановіть час антибрязкоту меншим за найкоротший імпульс. Натомість коротка завада більше не залишає неправильне значення.\n**BREAKING**: `temperature.nvme_temp` замінено на `temperature.disk_temp`. Значення зчитується через smartmontools з першого накопичувача NVMe або SATA/USB, який повідомляє температуру. Стару точку даних видалено. Встановіть `smartmontools` і замініть старе правило sudo для `nvme` новим із README.\n**NEW**: Датчики DHT також повідомляють точку роси (`gpio.N.dewpoint`), обчислену з температури та вологості.\n**ENHANCED**: Вхід, який не вдалося налаштувати, більше не вимикає всі інші GPIO; причина записується в журнал.\nВідсутній накопичувач, WLAN або правило sudo більше не записуються в журнал як помилка, і температура накопичувача 0 більше не показується.\nТепер адаптеру потрібен node.js >= 22.19.0.\n`python` вилучено із залежностей ОС, у поточному Debian такого пакета немає.\nДатчики DHT: README та повідомлення в журналі рекомендують драйвер ядра Linux, інструкцію з перезбирання node-dht-sensor видалено. Уже перезібраний node-dht-sensor продовжує працювати.\nПеревірку наявності libgpiod 2.2 перенесено зі скрипта preinstall адаптера до `@garfonso/opengpio`.\nВидалено невикористану залежність `ci`, оновлено залежності та додано відсутні переклади на сторінці налаштувань.",
+        "zh-cn": "**BREAKING**：“上拉”和“下拉”现在会启用输入的内部上拉/下拉电阻 (#31)。以前“上拉”只会反转数值，现在仍会反转。如果您勾选“上拉”只是为了反转一个接到 3.3 V 的输入，该输入现在会一直保持高电平：请取消“上拉”，改为勾选“倒置”。另请检查同时使用“上拉”和外部下拉电阻的输入。\n**BREAKING**：输入由内核消抖。只有当输入在消抖时间内保持稳定后才会报告变化，而不是立即报告后暂停。因此变化会延迟相应的时间，短于消抖时间的脉冲（例如来自 S0 或干簧管计量表）会被忽略——请将消抖时间设置得比最短脉冲更短。好处是短暂的干扰不会再让状态停留在错误的值上。\n**BREAKING**：`temperature.nvme_temp` 已由 `temperature.disk_temp` 取代。该值通过 smartmontools 从第一个报告温度的 NVMe 或 SATA/USB 驱动器读取。旧的状态会被删除。请安装 `smartmontools`，并用 README 中的新规则替换旧的 `nvme` sudo 规则。\n**NEW**：DHT 传感器现在也提供露点（`gpio.N.dewpoint`），由温度和湿度计算得出。\n**ENHANCED**：无法设置的输入不再导致所有其他 GPIO 失效；原因会记录在日志中。\n缺少驱动器、WLAN 或 sudo 规则时不再记录为错误，也不再显示 0 的磁盘温度。\n适配器现在需要 node.js >= 22.19.0。\n已从操作系统依赖中移除 `python`，当前的 Debian 中没有此软件包。\nDHT 传感器：README 和日志消息推荐使用 Linux 内核驱动，已删除重新编译 node-dht-sensor 的说明。已经重新编译的 node-dht-sensor 仍可继续使用。\nlibgpiod 2.2 的检查已从适配器的 preinstall 脚本移至 `@garfonso/opengpio`。\n移除了未使用的依赖 `ci`，更新了依赖项，并补充了管理页面中缺失的翻译。"
+      },
+      "4.0.0": {
+        "en": "Adapter requires node.js >= 22 now\nAdapter requires admin >= 7.7.22 now\nDependencies have been updated.\n**ENHANCED**: Added `temperature.fan_activity` object to monitor fan RPM via `/sys/devices/platform/cooling_fan/...`; falls back to `0` when unavailable.\nImprove GPIO handling.\n**FIXED**: GPIO outputs no longer switch off and on again during adapter start (#431).\nUse the `@garfonso/opengpio` npm package instead of a git branch of the fork.\n**FIXED**: The fan parser unit test matched the old single-hwmon path and failed since the fan reading fix.\n**FIXED**: DHT sensors ignored the configured poll interval (with no interval they were read continuously, so every read failed) and every sensor's timer read all sensors.\n**NEW**: DHT sensors are read through the Linux dht11 kernel driver if it is enabled (`dtoverlay=dht11,gpiopin=<n>`). This makes them work on a Raspberry Pi 5 without rebuilding node-dht-sensor (#406).\n**ENHANCED**: DHT sensor problems are logged with their cause and how to fix them; the startup log shows how each sensor is read.\n**FIXED**: Raspberry Pi 500 and Compute Module 5 are recognised as Raspberry Pi 5 boards and use the same GPIO chip.\n**FIXED**: The humidity object of a DHT sensor was named \"temperature\".\n**BREAKING**: GPIO and DHT sensor handling changed in several places (see above). This mostly fixes problems, but please check your GPIO setup after updating.",
+        "de": "Adapter benötigt jetzt node.js >= 22\nAdapter benötigt jetzt admin >= 7.7.22\nAbhängigkeiten wurden aktualisiert.\n**VERBESSERT**: Objekt `temperature.fan_activity` zur Überwachung der Lüfterdrehzahl via `/sys/devices/platform/cooling_fan/... `hinzugefügt; fällt auf `0` zurück, wenn nicht verfügbar.\nGPIO besser handhaben.\n**REPARIERT**: GPIO-Ausgänge gehen beim Adapterstart nicht mehr aus (#431).\nVerwenden Sie das npm-Paket `@garfonso /opengpio` statt Git.\n**REPARIERT**: Der Fan-Parser-Test entsprach dem alten Single-HWMON-Pfad und fiel seit dem Fan-Reading-Fix aus.\n**REPARIERT**: DHT-Sensoren ignorierten das eingestellte Abfrageintervall (ohne Intervall wurden sie ständig gelesen, also fehlschlug) und jeder Sensor las alle Sensoren.\n<n>: **NEU**: DHT-Sensoren werden vom Linux-DHT11-Kernel gelesen, falls er aktiv ist (`dtoverlay=dht11, gpiopin= `). Damit laufen sie auf Raspberry Pi 5 ohne Umbau des Node-DHT-Sensors (#406).\n**VERBESSERT**: Probleme mit DHT-Sensoren werden mit Ursache und Behebung protokolliert.\n**REPARIERT**: Raspberry Pi 500 und Compute Module 5 gelten als Raspberry Pi 5-Boards und nutzen denselben GPIO-Chip.\n**REPARIERT**: Das Feuchteobjekt eines DHT-Sensors hieß „Temperatur“.\n**BREAKING**: GPIO- und DHT-Sensoren wurden mehrfach geändert (siehe oben). Das behebt meist Probleme, aber überprüfen Sie Ihr GPIO Setup nach dem Update.",
+        "ru": "Теперь для адаптера требуется файл node.js >= 22\nДля адаптера теперь требуется администратор >= 7.7.22\nЗависимости обновлены.\n**УЛУЧШЕНО**: добавлен объект `temperature.fan_activity` для мониторинга частоты вращения вентилятора через `/sys/devices/platform/cooling_fan/... `; при недоступности возвращается к значению «0\".\nУлучшить обработку GPIO.\n**ИСПРАВЛЕНО**: выходы GPIO больше не выключаются и не включаются во время запуска адаптера (#431).\nИспользуйте пакет npm `@garfonso /opengpio` вместо ветки git в форке.\n**ИСПРАВЛЕНО**: Тестирование блока анализатора вентилятора совпало со старым одноканальным трактом и завершилось неудачей после исправления показаний вентилятора.\n**ИСПРАВЛЕНО**: датчики DHT игнорировали заданный интервал опроса (без перерыва они считывались непрерывно, поэтому каждое считывание не удавалось), а таймер каждого датчика считывал данные всех датчиков.\n<n>: **НОВОЕ**: Датчики DHT считываются через драйвер ядра Linux dht11, если он включен (`dtoverlay=dht11, gpiopin= `). Это позволяет им работать на Raspberry Pi 5 без перестройки датчика node-dht-sensor (#406).\n**ENHANCED**: проблемы с датчиками DHT регистрируются с указанием их причин и способов их устранения; журнал запуска показывает, как считывается каждый датчик.\n**ИСПРАВЛЕНО**: Raspberry Pi 500 и вычислительный модуль 5 признаны платами Raspberry Pi 5 и используют один и тот же чип GPIO.\n**ИСПРАВЛЕНО**: объект влажности датчика DHT получил название «температура».\n**BREAKING**: обработка датчиков GPIO и DHT изменилась в нескольких местах (см. выше). В основном это устраняет проблемы, но после обновления проверьте настройки GPIO.",
+        "pt": "O adaptador exige node.js >= 2\nAgora o adaptador exige admin >= 7.7.2\nAs dependências foram atualizadas.\n**APRIMORADO**: Adicionado objeto `temperature.fan_activity` para monitorar o RPM do ventilador via `/sys/devices/platform/cooling_fan/... `; volta para `0`.\nMelhore o uso do GPIO.\n**FIXO**: as saídas GPIO não se ligam mais ao iniciar o adaptador (#431).\nUse o pacote npm `@garfonso /opengpio` em vez do ramo git do fork.\n**CORRIGIDO**: O teste da unidade do ventilador correspondeu ao antigo caminho único e falhou.\n**CORRIGIDO**: Os sensores DHT ignoraram o intervalo de pesquisa configurado (sem intervalo, então toda leitura falhou) e o timer de cada sensor leu todos os sensores.\n<n>: **NOVO**: Sensores DHT são lidos no driver do kernel Linux dht11 se ativado (`dtoverlay=dht11, gpiopin= `). Isso os faz funcionar em um Raspberry Pi 5 sem reconstruir o sensor node-dht (#406).\n**APRIMORADO**: Os problemas do sensor DHT mostram sua causa e como corrigi-los; o log inicial mostra como cada sensor é lido.\n**FIXO**: O Raspberry Pi 500 e o Compute Module 5 são reconhecidos como placas e usam o mesmo chip GPIO.\n**FIXO**: O objeto de umidade de um sensor DHT é “temperatura”.\n**AVARIA**: O manuseio dos sensores GPIO e DHT mudou em vários locais (veja acima). Isso geralmente corrige problemas, mas verifique o GPIO após atualizar.",
+        "nl": "Voor de adapter is nu node.js >= 22 nodig\nAdapter vereist nu admin >= 7.7.22\nDe afhankelijkheden zijn bijgewerkt.\n**VERBETERD **: Object `temperature.fan_activity` toegevoegd om het toerental van de ventilator te controleren via `/sys/devices/platform/cooling_fan/... `; valt terug naar `0` wanneer dit niet beschikbaar is.\nVerbeter de verwerking van GPIO.\n**FIXED**: GPIO-uitgangen worden niet langer uitgeschakeld en weer ingeschakeld wanneer de adapter wordt gestart (#431).\nGebruik het npm-pakket `@garfonso /opengpio` in plaats van een git-branch van de fork.\n**FIXED**: De test van de ventilatorparsereenheid kwam overeen met het oude pad met één hamon en is mislukt sinds de leescorrectie van de ventilator.\n**FIXED**: DHT-sensoren negeerden het geconfigureerde pollinterval (zonder interval werden ze continu uitgelezen, dus elke meting mislukte) en de timer van elke sensor las alle sensoren uit.\n<n>: **NIEUW**: DHT-sensoren worden via de Linux dht11-kerneldriver gelezen als deze is ingeschakeld (`dtoverlay=dht11, gpiopin= `). Hierdoor werken ze op een Raspberry Pi 5 zonder de node-dht-sensor opnieuw te bouwen (#406).\n**VERBETERD **: problemen met de DHT-sensor worden geregistreerd met de oorzaak en hoe ze kunnen worden opgelost; het opstartlogboek toont hoe elke sensor wordt gelezen.\n**FIXED**: Raspberry Pi 500 en Compute Module 5 worden erkend als Raspberry Pi 5-kaarten en gebruiken dezelfde GPIO-chip.\n**FIXED**: Het vochtigheidsobject van een DHT-sensor kreeg de naam „temperatuur”.\n**BREEK**: De bediening van de GPIO- en DHT-sensoren is op verschillende plaatsen gewijzigd (zie hierboven). Dit lost meestal problemen op, maar controleer alstublieft uw GPIO-instellingen na de update.",
+        "fr": "Adapter nécessite node.js >= 22\nAdapter nécessite admin >= 7.7.22\nLes dépendances ont été mises à jour.\n**AMÉLIORÉ** : ajout de l'objet « temperature.fan_activity » pour contrôler le régime du ventilateur via /sys/devices/platform/cooling_fan/... ; repasse à « 0 » en cas d'indisponibilité.\nAméliorez la gestion du GPIO.\n**CORRIGÉ** : Les sorties GPIO ne s'éteignent plus au démarrage de l'adaptateur (#431).\nUtilisez le package npm @garfonso /opengpio au lieu de la branche git du fork.\n**CORRIGÉ** : Le test du fan parser correspondait à l'ancien chemin à un seul hamon et a échoué depuis.\n**CORRIGÉ** : Les capteurs DHT ignoraient l'intervalle d'interrogation configuré (sans intervalle, ils étaient lus en continu, donc chaque lecture échouait) et le chronomètre de chaque capteur lisait tous les capteurs.\n<n>: **NOUVEAU** : Les capteurs DHT sont lus via le pilote du noyau Linux dht11 s'il est activé (`dtoverlay=dht11, gpiopin= `). Cela les fait fonctionner sur un Raspberry Pi 5 sans avoir à reconstruire le capteur Node-DHT (#406).\n**AMÉLIORÉ** : Les problèmes de capteur DHT sont enregistrés avec leur cause et leur résolution ; le journal de démarrage indique la lecture.\n**CORRIGÉ** : Le Raspberry Pi 500 et le Compute Module 5 sont des cartes Raspberry Pi 5 et utilisent la même puce GPIO.\n**CORRIGÉ** : L'objet d'humidité d'un capteur DHT a été nommé « température ».\n**BREAKING** : La gestion des capteurs GPIO et DHT a changé à certains endroits (voir ci-dessus). Cela règle les problèmes, mais vérifiez votre GPIO après la mise à jour.",
+        "it": "Adapter richiede node.js =2 ora\nAdapter richiede admin >= 7.7.2 ora\nLe dipendenze sono aggiornate.\n**ENHANCED**: Aggiunto l'oggetto `temperature.fan_activity` per monitorare gli RPM delle ventole tramite `/sys/devices/platform/cooling_fan/... `; torna a `0`.\nMigliora la gestione GPIO\n**FISSO**: le uscite GPIO non si spengono e si riaccendono più all'avvio (#431).\nUsa il pacchetto npm @garfonso /opengpio invece di un ramo git del fork.\n**RISOLTO**: Il fan parser unit test corrispondeva al vecchio percorso single-hwmon e fallì.\n**FISSO**: i sensori DHT ignoravano l'intervallo di polling configurato (senza intervallo, quindi ogni lettura falliva) e il timer di ogni sensore.\n<n>: **NUOVO**: i sensori DHT vengono letti dal driver del kernel Linux dht11, se abilitato (`dtoverlay=dht11, gpiopin= `). Così funzionano su un Raspberry Pi 5 senza ricostruire node-dht-sensor (#406).\n**MIGLIORATO**: I problemi del sensore DHT sono registrati con la loro causa e come risolverli.\n**FISSO**: Raspberry Pi 500 e Compute Module 5 sono note come schede Raspberry Pi 5 e usano lo stesso chip GPIO.\n**FISSO**: L'oggetto di umidità di un sensore DHT era «temperatura».\n**BREAKING**: La gestione dei sensori GPIO e DHT è cambiata in più punti (vedi sopra). Per lo più risolve i problemi, ma controlli il suo GPIO dopo l'aggiornamento.",
+        "es": "El adaptador necesita node.js >= 22 ahora\nEl adaptador necesita admin >= 7.7.22 ahora\nSe actualizaron las dependencias.\n**MEJORADO**: Se ha añadido el objeto `temperature.fan_activity` para monitorizar las RPM del ventilador mediante `/sys/devices/platform/cooling_fan/... `; vuelve a 0 si no está disponible.\nMejore el manejo de GPIO.\n**FIJO**: Las salidas GPIO ya no se apagan ni se encienden al iniciar el adaptador (#431).\nUse el paquete npm `@garfonso /opengpio` en lugar de una rama git del fork.\n**CORREGIDO**: La prueba unitaria del analizador coincidió con la antigua ruta de un solo hamón y falló desde la lectura del ventilador.\n**CORREGIDO**: Los sensores DHT ignoraron el intervalo de sondeo configurado (sin intervalo, se leían de forma continua, por lo que cada lectura fallaba) y el temporizador de cada sensor leía todos los sensores.\n<n>: **NOVEDO**: Los sensores DHT se leen en el controlador del núcleo dht11 de Linux si está activado (`dtoverlay=dht11, gpiopin= `). Esto hace que funcionen en una Raspberry Pi 5 sin reconstruir el sensor node-dht (#406).\n**MEJORADO**: Los problemas del sensor DHT se registran con su causa y cómo solucionarlos; el registro de inicio muestra cómo se lee cada sensor.\n**FIJO**: La Raspberry Pi 500 y el Compute Module 5 se reconocen como placas Raspberry Pi 5 y utilizan el mismo chip GPIO.\n**FIJO**: El objeto de humedad de un sensor DHT se llamaba «temperatura».\n**BREAK**: El manejo de los sensores GPIO y DHT cambió en varios lugares (ver arriba). Esto soluciona sobre todo problemas, pero compruebe su GPIO tras actualizarlo.",
+        "pl": "Adapter wymaga teraz node.js >= 22\nAdapter wymaga administratora >= 7.7.22 teraz\nZależności zostały zaktualizowane.\n**WZMOCNION**: Dodano obiekt `temperatur.fan_activity` do monitorowania prędkości obrotowej wentylatora za pomocą `/sys/devices/platform/cooling_fan/... `; wraca do `0`, gdy jest niedostępny.\nPopraw obsługę GPIO.\n**NAPRAWIONO**: Wyjścia GPIO nie wyłączają się i nie włączają się ponownie podczas uruchamiania adaptera (#431).\nUżyj pakietu `@garfonso /opengpio` npm zamiast gałęzi git fork.\n**NAPRAWIONO**: Test jednostki analizatora wentylatora pasował do starej ścieżki pojedynczego hwmona i nie powiódł się od czasu poprawki odczytu wentylatora.\n**NAPRAWIONO**: Czujniki DHT zignorowały skonfigurowany interwał sondażu (bez interwału były odczytywane w sposób ciągły, więc każdy odczyt nie powiódł się), a zegar każdego czujnika odczytywał wszystkie czujniki.\n<n>: **NOWO**: Czujniki DHT są odczytywane przez sterownik jądra Linux dht11, jeśli jest włączony (`dtoverlay=dht11, gpiopin= `). To sprawia, że działają na Raspberry Pi 5 bez odbudowy czujnika węzłów dht (#406).\n**ULEPSZONEJ**: problemy z czujnikiem DHT są rejestrowane wraz z ich przyczyną i sposobem ich naprawienia; dziennik uruchamiania pokazuje, jak odczytywany jest każdy czujnik.\n**NAPRAWIONO**: Raspberry Pi 500 i Compute Module 5 są rozpoznawane jako płyty Raspberry Pi 5 i używają tego samego układu GPIO.\n**NAPRAWIONO**: Obiekt wilgotności czujnika DHT został nazwany „temperaturą”.\n**AWARIA**: Obsługa czujników GPIO i DHT zmieniła się w kilku miejscach (patrz powyżej). W większości rozwiązuje to problemy, ale po aktualizacji sprawdź konfigurację GPIO.",
+        "uk": "Адаптер вимагає node.js >= 22 зараз\nАдаптер вимагає адміністратора >= 7.7.22 зараз\nЗалежності були оновлені.\n**ПОКРАЩЕНО**: Додано об'єкт `temperature.fan_activity` для моніторингу оборотів вентилятора через `/sys/devices/platform/cooling_fan/... `; повертається до `0`, коли недоступний.\nПоліпшити обробку GPIO.\n**ВИПРАВЛЕНО**: Виходи GPIO більше не вимикаються та не вмикаються під час запуску адаптера (#431).\nВикористовуйте пакунок `@garfonso /opengpio` npm замість гілки git форка.\n**ВИПРАВЛЕНО**: Тест блоку парсера вентилятора відповідав старому шляху з одним hwmon і не вдалося після виправлення читання вентилятора.\n**ВИПРАВЛЕНО**: Датчики DHT ігнорували налаштований інтервал опитування (без інтервалу вони читалися безперервно, тому кожне читання не вдалося), а таймер кожного датчика зчитував усі датчики.\n<n>: **НОВИЙ**: Датчики DHT зчитуються через драйвер ядра Linux dht11, якщо він увімкнений (`dtoverlay=dht11, gpiopin= `). Це змушує їх працювати на Raspberry Pi 5 без перебудови вузли-dht-сенсора (#406).\n**ПОКРАЩЕНО**: Проблеми датчика DHT реєструються з їх причиною та способом їх усунення; журнал запуску показує, як зчитується кожен датчик.\n**ВИПРАВЛЕНО**: Raspberry Pi 500 і обчислювальний модуль 5 розпізнаються як плати Raspberry Pi 5 і використовують той самий чіп GPIO.\n**FIXED**: Об'єкт вологості датчика DHT отримав назву «температура».\n**ПОЛОМКА**: обробка датчиків GPIO та DHT змінилася в кількох місцях (див. Вище). Це в основному виправляє проблеми, але, будь ласка, перевірте налаштування GPIO після оновлення.",
+        "zh-cn": "适配器现在需要 node.js >= 22\n适配器现在需要管理员 >= 7.7.22\n依赖关系已更新。\n**增强**：添加了 `temperature.fan_activity` 对象，用于通过 `/sys/devices/platform/cooling_fan/... `监控风扇转速；不可用时回退到 `0`。\n改进 GPIO 处理。\n**已修复**：在适配器启动期间，GPIO 输出不再关闭并再次打开 (#431)。\n使用 '@garfonso /opengpio `npm 包代替分支的 git 分支。\n**已修复**：风扇解析器单元测试与旧的单哈蒙路径相匹配，自风扇读取修复以来失败。\n**已修复**：DHT 传感器忽略了配置的轮询间隔（没有连续读取间隔，因此每次读取都失败），并且每个传感器的计时器都会读取所有传感器。\n<n>: **新增**：如果启用 Linux dht11 内核驱动程序，则可通过 Linux dht11 内核驱动程序读取 DHT 传感器（`dtoverlay=dht11，gpiopin= `）。这使得它们无需重建 node-dht-sensor 即可在 Raspberry Pi 5 上运行 (#406)。\n**增强**：DHT 传感器问题会记录其原因和修复方法；启动日志显示每个传感器的读取方式。\n**已修复**：树莓派 500 和计算模块 5 被视为树莓派 5 主板，使用相同的 GPIO 芯片。\n**已修复**：DHT 传感器的湿度对象被命名为 “温度”。\n**BREAKING**：GPIO 和 DHT 传感器的处理方式在多个地方发生了变化（见上文）。这主要可以解决问题，但请在更新后检查您的 GPIO 设置。"
+      },
+      "3.0.2": {
+        "en": "Check for required libgpiod-dev package version",
+        "de": "Überprüfen Sie die erforderliche libgpiod-dev-Paketversion",
+        "ru": "Проверьте требуемую версию пакета libgpiod-dev",
+        "pt": "Verificar a versão necessária do pacote libgpiod- dev",
+        "nl": "Controleren op vereiste libgpiod-dev pakketversie",
+        "fr": "Vérifiez la version requise du paquet libgpiod-dev",
+        "it": "Controllare la versione del pacchetto libgpiod-dev richiesta",
+        "es": "Consulta la versión requerida del paquete libgpiod-dev",
+        "pl": "Sprawdź wymaganą wersję pakietu libgpiod- dev",
+        "uk": "Перевірте необхідну версію пакета libgpiod-dev",
+        "zh-cn": "检查所需的 libgpiod- dev 软件包版本"
+      },
+      "3.0.1": {
+        "en": "Updated logo, workflows and documentation\nadmin 7.6.17 and js-controller 6.0.11 (or later) are required",
+        "de": "Aktualisiertes Logo, Workflows und Dokumentation\nadmin 7.6.17 und js-controller 6.0.11 (oder später) sind erforderlich",
+        "ru": "Обновленный логотип, рабочие процессы и документация\nadmin 7.6.17 и js-контроллер 6.0.11 (или более поздние)",
+        "pt": "Logotipo atualizado, fluxos de trabalho e documentação\nadmin 7.6.17 e js-controller 6.0.11 (ou posterior) são necessários",
+        "nl": "Bijgewerkt logo, workflows en documentatie\nadmin 7.6.17 en js-controller 6.0.11 (of later) zijn vereist",
+        "fr": "Logo, flux de travail et documentation actualisés\nadmin 7.6.17 et js-contrôleur 6.0.11 (ou plus tard) sont requis",
+        "it": "Logo aggiornato, flussi di lavoro e documentazione\nadmin 7.6.17 e js-controller 6.0.11 (o successivo) sono richiesti",
+        "es": "Logos actualizados, flujos de trabajo y documentación\nadmin 7.6.17 y js-controller 6.0.11 (o posterior) son necesarios",
+        "pl": "Aktualizacja logo, przepływów roboczych i dokumentacji\nwymagany jest admin 7.6.17 i kontroler js- 6.0.11 (lub późniejszy)",
+        "uk": "Оновлений логотип, робочі процеси та документація\nadmin 7.6.17 та js-controller 6.0.11 (або пізніше) обов’язкові",
+        "zh-cn": "更新的标志、工作流程和文件\n需要admin 7.6.17和js控制器 6.0.11(或以后)"
+      },
+      "3.0.0": {
+        "en": "NodeJS 20.x (or newer) is required\nUpdated opengpio to v2 (works on Debian trixie)",
+        "de": "NodeJS 20.x (oder neuer) ist erforderlich\nAktualisierte opengpio auf v2 (Arbeiten auf Debian-Trixie)",
+        "ru": "NodeJS 20.x (или новее)\nОбновленный opengpio до v2 (работает над Debian trixie)",
+        "pt": "NodeJS 20.x (ou mais recente) é necessário\nAtualizado opengpio para v2 (funciona em Debian trixie)",
+        "nl": "NodeJS 20.x (of nieuwer) is vereist\nBijgewerkt opengpio naar v2 (werken op Debian trixie)",
+        "fr": "NodeJS 20.x (ou plus récent) est nécessaire\nMise à jour opengpio to v2 (travaille sur Debian trixie)",
+        "it": "NodeJS 20.x (o più recente) è richiesto\nOpengpio aggiornato a v2 (opera su trixie Debian)",
+        "es": "NodeJS 20.x (o nuevo) es necesario\nOpengpio actualizado a v2 (trabajos en el trixie de Debian)",
+        "pl": "NodeJS 20.x (lub nowszy) jest wymagany\nAktualizacja opengpio do v2 (działa na trixie Debiana)",
+        "uk": "NodeJS 20.x (або новіший) обов'язковий\nОновлено opengpio в v2 (працює на Debian trixie)",
+        "zh-cn": "需要节点JS 20.x(或更新)\n更新了 opengpio 到 v2( debian trixie 上的工作)"
+      },
+      "2.4.0": {
+        "en": "read the current state of GPIO outputs during adapter startup.\nre-read GPIO input, if set by the user (with ack=false).\nadd an option to invert true/false mapping to 1/0.\nAllow multiple instances of this adapter per host.\ntried to improve initialization of GPIO inputs.",
+        "de": "lesen des aktuellen Zustands der GPIO-Ausgänge beim Adapter-Start.\ngPIO-Eingänge erneut lesen, wenn vom Benutzer versehentlich gesteuert (mit ack=false).\nEine option hinzugefügt zur Invertierung von true/false mapping auf 1/0.\nMehrere Instanzen dieses Adapters pro Host erlaubt.\nVersucht, die Initialisierung der GPIO-Eingänge zu verbessern.",
+        "ru": "ознакомьтесь с текущим состоянием выводов GPIO во время запуска адаптера.\nперечитайте ввод GPIO, если он установлен пользователем (с ack=false).\nдобавить опцию инвертировать истинное/ложное отображение до 1/0.\nРазрешить несколько экземпляров этого адаптера на хост.\nпытался улучшить инициализацию входов GPIO.",
+        "pt": "leia o estado atual de saídas GPIO durante a inicialização do adaptador.\nre-leia entrada GPIO, se definido pelo usuário (com ack=false).\nadicionar uma opção para inverter mapeamento verdadeiro / falso para 1/0.\nPermitir várias instâncias deste adaptador por host.\ntentou melhorar a inicialização de entradas GPIO.",
+        "nl": "lees de huidige staat van GPIO-uitgangen tijdens het opstarten van de adapter.\nherlees GPIO-invoer, indien ingesteld door de gebruiker (met ack=false).\nvoeg een optie toe om true/false mapping om te keren naar 1/0.\nMeerdere instanties van deze adapter per host toestaan.\ngeprobeerd om de initialisatie van GPIO ingangen te verbeteren.",
+        "fr": "lire l'état actuel des sorties GPIO lors du démarrage de l'adaptateur.\nrelire l'entrée GPIO, si définie par l'utilisateur (avec ack=false).\najouter une option pour inverser true/false mapping au 1/0.\nAutoriser plusieurs instances de cet adaptateur par hôte.\na essayé d'améliorer l'initialisation des entrées GPIO.",
+        "it": "leggere lo stato attuale delle uscite GPIO durante l'avvio dell'adattatore.\nre-read GPIO input, se impostato dall'utente (con ack=false).\naggiungere un'opzione per invertire la mappatura vera/falsa a 1/0.\nConsentire più istanze di questo adattatore per host.\nha cercato di migliorare l'inizializzazione degli ingressi GPIO.",
+        "es": "leer el estado actual de salidas GPIO durante la puesta en marcha del adaptador.\nvolver a leer la entrada GPIO, si se establece por el usuario (con ack=false).\nañadir una opción para invertir la cartografía verdadera/falsa a 1/0.\nPermitir múltiples instancias de este adaptador por host.\ntrató de mejorar la inicialización de los insumos de GPIO.",
+        "pl": "czytaj aktualny stan wyjść GPIO podczas uruchamiania adaptera.\nre- read GPIO input, if set by the user (with ack = false).\ndodaj opcję, aby odwrócić prawdziwe / fałszywe odwzorowanie do 1 / 0.\nZezwala na wiele instancji tego adaptera na hosta.\npróbował poprawić inicjalizację wejść GPIO.",
+        "uk": "читати поточний стан виходів GPIO під час запуску адаптера.\nперечитати вхід GPIO, якщо встановити користувачем (з ack=false).\nдодати варіант для інвертації true/false до 1/0.\nДозволити кілька екземплярів цього адаптера за господар.\nнамагалася вдосконалити ініціалізацію вводів GPIO.",
+        "zh-cn": "读取适配器启动期间GPIO输出的当前状态.\n重读 GPIO 输入,如果由用户设置(带有 ack=false).\n将反向真实/假映射的选项添加到 1/0.\n每个主机允许此适配器的多个实例 .\n尝试改进GPIO投入的初始化."
+      }
     },
-    "native": {
-        "c_cpu": true,
-        "c_raspberry": false,
-        "c_memory": true,
-        "c_network": true,
-        "c_sdcard": true,
-        "c_swap": true,
-        "c_temperature": true,
-        "c_uptime": true,
-        "c_wlan": true,
-        "interval": 60000,
-        "cpu": {
-            "cpu_frequency": {
-                "command": "cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_cur_freq",
-                "regexp": "(.*)",
-                "post": "$1/1000"
-            },
-            "load1,load5,load15": {
-                "command": "cat /proc/loadavg",
-                "regexp": "^(\\S+)\\s(\\S+)\\s(\\S+)",
-                "post": ""
-            },
-            "scaling_governor": {
-                "command": "cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor",
-                "regexp": "(.*)",
-                "post": ""
-            }
-        },
-        "raspberry": {
-            "cpu_voltage": {
-                "command": "vcgencmd measure_volts core",
-                "regexp": "(\\d+.\\d+)V",
-                "post": ""
-            },
-            "mem_arm": {
-                "command": "vcgencmd get_mem arm",
-                "regexp": "(\\d+)",
-                "post": ""
-            },
-            "mem_gpu": {
-                "command": "vcgencmd get_mem gpu",
-                "regexp": "(\\d+)",
-                "post": ""
-            }
-        },
-        "memory": {
-            "memory_total": {
-                "command": "cat /proc/meminfo",
-                "regexp": "MemTotal:\\s+(\\d+)",
-                "post": "$1/1024"
-            },
-            "memory_free": {
-                "command": "cat /proc/meminfo",
-                "regexp": "MemFree:\\s+(\\d+)",
-                "post": "$1/1024"
-            },
-            "memory_available": {
-                "command": "cat /proc/meminfo",
-                "regexp": "MemAvailable:\\s+(\\d+)",
-                "post": "$1/1024",
-                "multiline": true
-            }
-        },
-        "network": {
-            "net_received": {
-                "command": "cat /sys/class/net/eth0/statistics/rx_bytes",
-                "regexp": "(.*)",
-                "post": "$1*-1"
-            },
-            "net_send": {
-                "command": "cat /sys/class/net/eth0/statistics/tx_bytes",
-                "regexp": "(.*)",
-                "post": ""
-            }
-        },
-        "sdcard": {
-            "sdcard_root_total": {
-                "command": "df /",
-                "regexp": "\\S+\\s+(\\d+).*\\/$",
-                "post": "$1/1024",
-                "multiline": true
-            },
-            "sdcard_boot_total": {
-                "command": "df /boot",
-                "regexp": "\\S+\\s+(\\d+).*\\/boot$",
-                "post": "$1/1024",
-                "multiline": true
-            },
-            "sdcard_root_used": {
-                "command": "df /",
-                "regexp": "\\S+\\s+\\d+\\s+(\\d+).*\\/$",
-                "post": "$1/1024",
-                "multiline": true
-            },
-            "sdcard_boot_used": {
-                "command": "df /boot",
-                "regexp": "\\S+\\s+\\d+\\s+(\\d+).*\\/boot$",
-                "post": "$1/1024",
-                "multiline": true
-            }
-        },
-        "swap": {
-            "swap_total": {
-                "command": "cat /proc/meminfo",
-                "regexp": "SwapTotal:\\s+(\\d+)",
-                "post": "$1/1024",
-                "multiline": true
-            },
-            "swap_used": {
-                "command": "cat /proc/meminfo",
-                "regexp": "SwapFree:\\s+(\\d+)",
-                "post": "(rpi.swap_total - $1)/1024",
-                "multiline": true
-            }
-        },
-        "temperature": {
-            "soc_temp": {
-                "command": "cat /sys/devices/virtual/thermal/thermal_zone0/temp",
-                "regexp": "(.*)",
-                "post": "$1/1000"
-            }
-        },
-        "uptime": {
-            "uptime": {
-                "command": "cat /proc/uptime",
-                "regexp": "(^\\S+)",
-                "post": ""
-            }
-        },
-        "wlan": {
-            "wifi_received": {
-                "command": "cat /sys/class/net/wlan0/statistics/rx_bytes",
-                "regexp": "(.*)",
-                "post": "$1*-1"
-            },
-            "wifi_send": {
-                "command": "cat /sys/class/net/wlan0/statistics/tx_bytes",
-                "regexp": "(.*)",
-                "post": ""
-            }
-        },
-        "gpios": [
-
-        ]
+    "titleLang": {
+      "en": "RPI Monitor and GPIO",
+      "de": "RPI-Monitor und GPIO",
+      "ru": "Монитор RPI и GPIO",
+      "pt": "Monitor RPI e GPIO",
+      "nl": "RPI-monitor en GPIO",
+      "fr": "Moniteur RPI et GPIO",
+      "it": "Monitoraggio RPI e GPIO",
+      "es": "Monitor RPI y GPIO",
+      "pl": "Monitor RPI i GPIO",
+      "uk": "Монітор RPI та GPIO",
+      "zh-cn": "RPI 监视器和 GPIO"
     },
-    "objects": [
+    "desc": {
+      "en": "Monitor data from a Raspberry PI and interact with GPIOs.",
+      "de": "Überwachen Sie Daten von einem Raspberry PI und interagieren Sie mit GPIOs.",
+      "ru": "Отслеживайте данные Raspberry PI и взаимодействуйте с GPIO.",
+      "pt": "Monitore dados de um Raspberry PI e interaja com GPIOs.",
+      "nl": "Bewaak gegevens van een Raspberry PI en communiceer met GPIO's.",
+      "fr": "Surveillez les données d'un Raspberry PI et interagissez avec les GPIO.",
+      "it": "Monitora i dati da un Raspberry PI e interagisci con i GPIO.",
+      "es": "Supervise los datos de una Raspberry PI e interactúe con GPIO.",
+      "pl": "Monitoruj dane z Raspberry PI i korzystaj z GPIO.",
+      "uk": "Відстежуйте дані з Raspberry PI та взаємодійте з GPIO.",
+      "zh-cn": "监控来自 Raspberry PI 的数据并与 GPIO 交互。"
+    },
+    "authors": [
+      "Christian Baumgartner",
+      "husky-koglhof <husky.koglhof@icloud.com>",
+      "Garfonso <garfonso@mobo.info>",
+      "iobroker-community-adapters <iobroker-community-adapters@gmx.de>"
     ],
-    "instanceObjects": [
+    "os": [
+      "linux"
+    ],
+    "keywords": [
+      "raspberry",
+      "monitoring",
+      "gpio",
+      "raspian"
+    ],
+    "licenseInformation": {
+      "type": "free",
+      "license": "MIT"
+    },
+    "platform": "Javascript/Node.js",
+    "icon": "rpi2.png",
+    "enabled": true,
+    "extIcon": "https://raw.githubusercontent.com/iobroker-community-adapters/ioBroker.rpi2/master/admin/rpi2.png",
+    "readme": "https://github.com/iobroker-community-adapters/ioBroker.rpi2/blob/master/README.md",
+    "loglevel": "info",
+    "tier": 2,
+    "mode": "daemon",
+    "type": "hardware",
+    "compact": false,
+    "connectionType": "local",
+    "dataSource": "poll",
+    "adminUI": {
+      "config": "json"
+    },
+    "osDependencies": {
+      "linux": [
+        "build-essential",
+        "libgpiod-dev",
+        "pkg-config"
+      ]
+    },
+    "dependencies": [
+      {
+        "js-controller": ">=6.0.11"
+      }
+    ],
+    "globalDependencies": [
+      {
+        "admin": ">=7.7.22"
+      }
+    ],
+    "messages": [
+      {
+        "condition": {
+          "operand": "and",
+          "rules": [
+            "oldVersion<2.0.0",
+            "newVersion>=2.0.0"
+          ]
+        },
+        "title": {
+          "en": "GPIO Breaking Change",
+          "de": "GPIO Veränderung",
+          "ru": "GPIO Перерывы",
+          "pt": "GPIO Mudança de ruptura",
+          "nl": "GPIO Verandering doorbreken",
+          "fr": "GPIO Briser le changement",
+          "it": "GPIO Cambiamento di rottura",
+          "es": "GPIO Cambio de ruptura",
+          "pl": "GPIO Łamanie zmian",
+          "uk": "ГРУП Зміна несправностей",
+          "zh-cn": "科普罗 中断更改"
+        },
+        "text": {
+          "en": "GPIO needed massive changes for support of newer Raspian versions (Bookworm and following). Please check your GPIO configuration and if everything still works. GPIO Button support is removed. If you need it, please discuss in Github, see link. - Also, keep in mind that hardware pull up / down is still not supported.",
+          "de": "GPIO brauchte massive Änderungen für die Unterstützung neuerer Raspian Versionen (Bookworm und nachfolgend). Bitte überprüfen Sie Ihre GPIO-Konfiguration und wenn alles noch funktioniert. GPIO Button-Unterstützung wird entfernt. Wenn Sie es brauchen, diskutieren Sie bitte in Github, siehe Link.",
+          "ru": "GPIO нуждались в массовых изменениях для поддержки более новых версий Raspian (Bookworm и следующий). Пожалуйста, проверьте конфигурацию GPIO и все ли еще работает. Поддержка GPIO Button удалена. Если вам это нужно, пожалуйста, обсудите в Гитубе, см. ссылку.",
+          "pt": "O GPIO precisava de mudanças massivas para o suporte de versões mais recentes do Raspian (Bookworm e seguintes). Por favor, verifique sua configuração GPIO e se tudo ainda funciona. O suporte do botão GPIO é removido. Se precisar, por favor, discuta no Github, veja link.",
+          "nl": "GPIO had massale veranderingen nodig voor ondersteuning van nieuwere Raspian versies (Bookworm en volgende). Controleer uw GPIO configuratie en of alles nog werkt. GPIO-knop ondersteuning is verwijderd. Als je het nodig hebt, bespreek het dan in Github, zie link.",
+          "fr": "GPIO a besoin de changements massifs pour soutenir les nouvelles versions Raspiennes (Bookworm et suivants). Veuillez vérifier votre configuration GPIO et si tout fonctionne encore. Le support du bouton GPIO est enlevé. Si vous en avez besoin, veuillez discuter à Github, voir le lien.",
+          "it": "GPIO aveva bisogno di enormi cambiamenti per il supporto delle nuove versioni Raspian (Bookworm e seguenti). Controllare la configurazione GPIO e se tutto funziona ancora. Il supporto del pulsante GPIO viene rimosso. Se avete bisogno, si prega di discutere a Github, vedere il link.",
+          "es": "GPIO necesitaba cambios masivos para apoyar las nuevas versiones de Raspian (worm y siguientes). Por favor, compruebe su configuración de GPIO y si todo sigue funcionando. GPIO Button support is removed. Si lo necesita, por favor discuta en Github, vea el enlace.",
+          "pl": "GPIO potrzebowało ogromnych zmian dla wsparcia nowszych wersji Raspian (Bookworm i następnie). Proszę sprawdzić konfigurację GPIO i czy wszystko nadal działa. Wsparcie GPIO Button jest usuwane. W razie potrzeby proszę omówić to w Github, zobacz link.",
+          "uk": "GPIO вимагає масивних змін для підтримки нових версій Raspian (Bookworm і наступні). Будь ласка, перевірте налаштування GPIO і якщо все ще працює. При видаленні кнопки GPIO. Якщо вам потрібно, будь ласка, покажіть в Github, див. посилання.",
+          "zh-cn": "GPIO需要大规模修改来支持较新的Raspian版本(Bookdorm and follows). 请检查您的 GPIO 配置, 如果一切都还在工作。 GPIO按钮支持被删除. 如果你需要,请在Github讨论,参见链接."
+        },
+        "link": "https://github.com/iobroker-community-adapters/ioBroker.rpi2/issues/192",
+        "level": "warn",
+        "linkText": {
+          "en": "GPIO Button discussion.",
+          "de": "GPIO Button Diskussion.",
+          "ru": "GPIO Button discussion.",
+          "pt": "Discussão do botão GPIO.",
+          "nl": "GPIO Button discussie.",
+          "fr": "Discussion sur le bouton GPIO.",
+          "it": "GPIO Button discussione.",
+          "es": "GPIO Button discussion.",
+          "pl": "Dyskusja GPIO Button.",
+          "uk": "Обговорення кнопки GPIO.",
+          "zh-cn": "GPIO按钮讨论."
+        },
+        "buttons": [
+          "agree",
+          "cancel"
+        ]
+      },
+      {
+        "condition": {
+          "operand": "and",
+          "rules": [
+            "oldVersion<3.0.0",
+            "newVersion>=3.0.0"
+          ]
+        },
+        "title": {
+          "en": "libgpiod-dev >= 2.2.1 required",
+          "de": "libgpiod-dev >= 2.2.1 erforderlich",
+          "ru": "libgpiod-dev >= 2.2.1 требуется",
+          "pt": "libgpiod-dev >= 2.2.1 necessário",
+          "nl": "libgpiod-dev >= 2.2.1 vereist",
+          "fr": "libgpiod-dev >= 2.2.1 requis",
+          "it": "libgpiod-dev >= 2.2.1 richiesto",
+          "es": "libgpiod-dev >= 2.2.1 requerido",
+          "pl": "libgpiod-dev >= 2.2.1 wymagane",
+          "uk": "libgpiod-dev >= 2.2.1 необхідний",
+          "zh-cn": "需要使用 libgpiod-dev >= 2.2.1 软件"
+        },
+        "text": {
+          "en": "Version 3.x requires libgpiod-dev >= 2.2.1 on your system (like Debian 13). Check the availability of that version before upgrading.",
+          "de": "Version 3.x erfordert libgpiod-dev >= 2.2.1 auf Ihrem System (wie Debian 13). Überprüfen Sie die Verfügbarkeit dieser Version vor dem Upgrade.",
+          "ru": "Версия 3.x требует libgpiod-dev >= 2.2.1 в вашей системе (например, Debian 13). Проверьте наличие этой версии перед обновлением.",
+          "pt": "Versão 3.x requer libgpiod-dev >= 2.2.1 em seu sistema (como Debian 13). Verifique a disponibilidade dessa versão antes de atualizar.",
+          "nl": "Versie 3.x vereist libgpiod-dev >= 2.2.1 op uw systeem (zoals Debian 13). Controleer de beschikbaarheid van die versie voordat u upgrade.",
+          "fr": "La version 3.x nécessite libgpiod-dev >= 2.2.1 sur votre système (comme Debian 13). Vérifiez la disponibilité de cette version avant de la mettre à jour.",
+          "it": "Versione 3.x richiede libgpiod-dev >= 2.2.1 sul tuo sistema (come Debian 13). Controllare la disponibilità di quella versione prima dell'aggiornamento.",
+          "es": "Versión 3.x requiere libgpiod-dev >= 2.2.1 en su sistema (como Debian 13). Compruebe la disponibilidad de esa versión antes de actualizar.",
+          "pl": "Wersja 3.x wymaga libgpiod- dev >= 2.2.1 w systemie (jak Debian 13). Sprawdź dostępność tej wersji przed aktualizacją.",
+          "uk": "Версія 3.x вимагає libgpiod-dev >= 2.2.1 на вашу систему (наприклад, Debian 13). Перевірити наявність такої версії до оновлення.",
+          "zh-cn": "3.x版本需要 libgpiod-dev >= 2.2.1在你的系统中(如Debian 13). 升级前检查该版本的可用性."
+        },
+        "level": "warn",
+        "buttons": [
+          "agree",
+          "cancel"
+        ]
+      },
+      {
+        "condition": {
+          "operand": "and",
+          "rules": [
+            "oldVersion<4.0.0",
+            "newVersion>=4.0.0"
+          ]
+        },
+        "title": {
+          "en": "Version 4: please check your GPIOs",
+          "de": "Version 4: Bitte GPIO-Einstellungen prüfen",
+          "ru": "Версия 4: проверьте настройки GPIO",
+          "pt": "Versão 4: verifique a configuração dos GPIOs",
+          "nl": "Versie 4: controleer uw GPIO-instellingen",
+          "fr": "Version 4 : vérifiez votre configuration GPIO",
+          "it": "Versione 4: controllare la configurazione GPIO",
+          "es": "Versión 4: compruebe la configuración de los GPIO",
+          "pl": "Wersja 4: sprawdź konfigurację GPIO",
+          "uk": "Версія 4: перевірте налаштування GPIO",
+          "zh-cn": "版本 4：请检查您的 GPIO 设置"
+        },
+        "text": {
+          "en": "Version 4 changes a lot in how GPIOs and DHT sensors are handled. Most of it fixes problems: outputs start with their configured initial value right away instead of switching off and on, all inputs report changes (before, only about four did), and DHT sensors use the configured poll interval (at least 2 seconds, 30 seconds if empty) and the Linux dht11 kernel driver if it is enabled. If your setup relied on the old behaviour, please check your GPIO states and scripts after the update. Node.js 22 or newer is required.",
+          "de": "Version 4 ändert vieles an der Behandlung von GPIOs und DHT-Sensoren. Das meiste behebt Probleme: Ausgänge starten direkt mit ihrem konfigurierten Anfangswert, statt kurz aus- und wieder einzuschalten, alle Eingänge melden Änderungen (bisher nur etwa vier), und DHT-Sensoren nutzen das eingestellte Abfrageintervall (mindestens 2 Sekunden, 30 Sekunden wenn leer) sowie den Linux-Kerneltreiber dht11, falls er aktiviert ist. Falls Ihr Setup auf dem alten Verhalten aufbaut, prüfen Sie bitte nach dem Update Ihre GPIO-Datenpunkte und Skripte. Node.js 22 oder neuer ist erforderlich.",
+          "ru": "Версия 4 многое меняет в работе с GPIO и датчиками DHT. В основном это исправления: выходы сразу получают заданное начальное значение, а не выключаются и снова включаются, все входы сообщают об изменениях (раньше — только около четырёх), а датчики DHT используют заданный интервал опроса (не менее 2 секунд, 30 секунд, если не указан) и драйвер ядра Linux dht11, если он включён. Если ваша конфигурация зависела от старого поведения, проверьте после обновления состояния GPIO и скрипты. Требуется Node.js 22 или новее.",
+          "pt": "A versão 4 altera muito o tratamento dos GPIOs e dos sensores DHT. A maior parte corrige problemas: as saídas iniciam imediatamente com o valor inicial configurado, em vez de desligar e ligar de novo, todas as entradas comunicam alterações (antes, apenas cerca de quatro) e os sensores DHT usam o intervalo de leitura configurado (no mínimo 2 segundos, 30 segundos se vazio) e o driver dht11 do kernel Linux, se estiver ativado. Se a sua configuração dependia do comportamento antigo, verifique os estados GPIO e os scripts após a atualização. É necessário Node.js 22 ou superior.",
+          "nl": "Versie 4 verandert veel aan de afhandeling van GPIO's en DHT-sensoren. Het meeste lost problemen op: uitgangen starten direct met hun ingestelde beginwaarde in plaats van uit en weer aan te gaan, alle ingangen melden wijzigingen (voorheen slechts ongeveer vier) en DHT-sensoren gebruiken het ingestelde pollinginterval (minimaal 2 seconden, 30 seconden als het leeg is) en het Linux-kernelstuurprogramma dht11 als dat is ingeschakeld. Als uw opstelling op het oude gedrag vertrouwde, controleer dan na de update uw GPIO-statussen en scripts. Node.js 22 of nieuwer is vereist.",
+          "fr": "La version 4 modifie beaucoup la gestion des GPIO et des capteurs DHT. L'essentiel corrige des problèmes : les sorties démarrent directement avec leur valeur initiale configurée au lieu de s'éteindre puis se rallumer, toutes les entrées signalent leurs changements (auparavant, seulement quatre environ) et les capteurs DHT utilisent l'intervalle d'interrogation configuré (au moins 2 secondes, 30 secondes s'il est vide) ainsi que le pilote noyau Linux dht11 s'il est activé. Si votre installation dépendait de l'ancien comportement, vérifiez vos états GPIO et vos scripts après la mise à jour. Node.js 22 ou plus récent est requis.",
+          "it": "La versione 4 cambia molto nella gestione dei GPIO e dei sensori DHT. La maggior parte corregge problemi: le uscite partono subito con il valore iniziale configurato invece di spegnersi e riaccendersi, tutti gli ingressi segnalano le modifiche (prima solo circa quattro) e i sensori DHT usano l'intervallo di lettura configurato (almeno 2 secondi, 30 secondi se vuoto) e il driver del kernel Linux dht11, se attivato. Se la vostra configurazione dipendeva dal vecchio comportamento, controllate gli stati GPIO e gli script dopo l'aggiornamento. È richiesto Node.js 22 o superiore.",
+          "es": "La versión 4 cambia mucho el manejo de los GPIO y de los sensores DHT. La mayor parte corrige problemas: las salidas arrancan directamente con su valor inicial configurado en lugar de apagarse y volver a encenderse, todas las entradas informan de sus cambios (antes solo unas cuatro) y los sensores DHT usan el intervalo de consulta configurado (al menos 2 segundos, 30 segundos si está vacío) y el controlador dht11 del kernel de Linux si está activado. Si su configuración dependía del comportamiento anterior, compruebe los estados GPIO y los scripts después de la actualización. Se requiere Node.js 22 o superior.",
+          "pl": "Wersja 4 wiele zmienia w obsłudze GPIO i czujników DHT. Większość zmian usuwa problemy: wyjścia od razu startują ze skonfigurowaną wartością początkową zamiast wyłączać się i ponownie włączać, wszystkie wejścia zgłaszają zmiany (wcześniej tylko około czterech), a czujniki DHT używają skonfigurowanego interwału odczytu (co najmniej 2 sekundy, 30 sekund, jeśli pole jest puste) oraz sterownika jądra Linux dht11, jeśli jest włączony. Jeśli Twoja konfiguracja opierała się na starym zachowaniu, sprawdź po aktualizacji stany GPIO i skrypty. Wymagany jest Node.js 22 lub nowszy.",
+          "uk": "Версія 4 суттєво змінює роботу з GPIO та датчиками DHT. Здебільшого це виправлення: виходи одразу отримують налаштоване початкове значення, а не вимикаються й знову вмикаються, усі входи повідомляють про зміни (раніше — лише близько чотирьох), а датчики DHT використовують налаштований інтервал опитування (щонайменше 2 секунди, 30 секунд, якщо не вказано) і драйвер ядра Linux dht11, якщо його ввімкнено. Якщо ваша конфігурація залежала від старої поведінки, після оновлення перевірте стани GPIO та скрипти. Потрібен Node.js 22 або новіший.",
+          "zh-cn": "版本 4 对 GPIO 和 DHT 传感器的处理做了大量修改，主要是修复问题：输出会直接以配置的初始值启动，而不再先关闭再打开；所有输入都会报告变化（以前只有大约四个）；DHT 传感器会使用配置的轮询间隔（至少 2 秒，留空时为 30 秒），并在启用时使用 Linux dht11 内核驱动。如果您的设置依赖旧的行为，请在更新后检查 GPIO 状态和脚本。需要 Node.js 22 或更高版本。"
+        },
+        "link": "https://github.com/iobroker-community-adapters/ioBroker.rpi2#gpios",
+        "linkText": {
+          "en": "GPIO documentation",
+          "de": "GPIO-Dokumentation",
+          "ru": "Документация по GPIO",
+          "pt": "Documentação dos GPIO",
+          "nl": "GPIO-documentatie",
+          "fr": "Documentation GPIO",
+          "it": "Documentazione GPIO",
+          "es": "Documentación de GPIO",
+          "pl": "Dokumentacja GPIO",
+          "uk": "Документація GPIO",
+          "zh-cn": "GPIO 文档"
+        },
+        "level": "warn",
+        "buttons": [
+          "agree",
+          "cancel"
+        ]
+      }
     ]
+  },
+  "native": {
+    "c_cpu": true,
+    "c_raspberry": false,
+    "c_memory": true,
+    "c_network": true,
+    "c_sdcard": true,
+    "c_swap": true,
+    "c_temperature": true,
+    "c_uptime": true,
+    "c_wlan": true,
+    "interval": 60000,
+    "gpioSettings": []
+  },
+  "objects": [],
+  "instanceObjects": []
 }

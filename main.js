@@ -3,192 +3,446 @@
  *
  *      License: MIT
  */
+'use strict';
 
-var utils   = require(__dirname + '/lib/utils'); // Get common adapter utils
-var gpio;
+/*
+ * Created with @iobroker/create-adapter v2.6.5
+ */
 
-var adapter = utils.adapter({
-    name: 'rpi2',
+// Enlarge the libuv thread pool BEFORE anything triggers its lazy initialisation
+// (i.e. before the first async fs/dns/crypto operation - hence at the very top,
+// before any require that could do async I/O).
+//
+// Background: upstream `opengpio` ran every input "watch" as an endless task on
+// this pool, so with the default size of 4 only the first ~4 inputs ever got edge
+// events (https://github.com/iobroker-community-adapters/ioBroker.rpi2/issues/378).
+// Our fork `@garfonso/opengpio` (>= 2.1.0) gives each watch its own thread, so that
+// no longer depends on the pool size. The larger pool is kept as headroom, because
+// native modules still run blocking work on it - node-dht-sensor holds a worker for
+// up to ~2s per read, and the adapter's own fs calls share the same pool.
+// Respect an explicitly configured value if the user set one.
+if (!process.env.UV_THREADPOOL_SIZE) {
+    process.env.UV_THREADPOOL_SIZE = '64';
+}
 
-    ready: function () {
-        if (adapter.config.forceinit) {
-            adapter.objects.getObjectList({startkey: adapter.name + '.' + adapter.instance, endkey: adapter.name + '.' + adapter.instance + '\u9999'}, function (err, res) {
-                res = res.rows;
-                for (var i = 0; i < res.length; i++) {
-                    var id = res[i].doc.common.name;
+// The adapter-core module gives you access to the core ioBroker functions
+// you need to create an adapter
+const utils = require('@iobroker/adapter-core');
+const parsers = require('./lib/parsers.json');
+const { buttonEvents, GpioControl } = require('./lib/gpioControl');
+const { convertConfig } = require('./lib/configConverter');
+const { DhtControl, temperatureStateName, humidityStateName, dewPointStateName } = require('./lib/dhtControl');
 
-                    adapter.log.debug('Remove ' + id + ': ' + id);
+const errorsLogged = {};
+const intervalTimers = [];
 
-                    adapter.delObject(id, function (res, err) {
-                        if (res !== undefined && res !== 'Not exists') adapter.log.error('res from delObject: ' + res);
-                        if (err !== undefined) adapter.log.error('err from delObject: ' + err);
-                    });
-                    adapter.deleteState(id, function (res, err) {
-                        if (res !== undefined && res !== 'Not exists') adapter.log.error('res from deleteState: ' + res);
-                        if (err !== undefined) adapter.log.error('err from deleteState: ' + err);
-                    });
-                }
-            });
-        }
-        adapter.subscribeStates('*');
-
-        adapter.objects.getObjectList({include_docs: true}, function (err, res) {
-            res = res.rows;
-            objects = {};
-            for (var i = 0; i < res.length; i++) {
-                objects[res[i].doc._id] = res[i].doc;
-            }
-
-            adapter.log.debug('received all objects');
-            main();
+class Rpi2 extends utils.Adapter {
+    /**
+     * @param [options] {object} Adapter options
+     */
+    constructor(options) {
+        super({
+            ...options,
+            name: 'rpi2',
         });
-    },
-    stateChange: function (id, state) {
-        adapter.log.debug('stateChange for ' + id + ' found state = ' + JSON.stringify(state));
-        if (state && !state.ack) {
-            if (id.indexOf('gpio.') !== -1) {
-                var parts = id.split('.');
-                parts.pop(); // remove state
-                writeGpio(parts.pop(), state.val);
+        this.on('ready', this.onReady.bind(this));
+        this.on('stateChange', this.onStateChange.bind(this));
+        // this.on('objectChange', this.onObjectChange.bind(this));
+        // this.on('message', this.onMessage.bind(this));
+        this.on('unload', this.onUnload.bind(this));
+    }
+
+    async onReady() {
+        objects = {};
+        if (convertConfig(this.config, this)) {
+            this.log.info('Config updated, will write new config and restart adapter.');
+            const id = `system.adapter.${this.namespace}`;
+            const instanceObject = await this.getForeignObjectAsync(id);
+            if (instanceObject) {
+                console.log(`instanceObject: ${JSON.stringify(instanceObject)}`);
+                instanceObject.native = this.config;
+                await this.setForeignObject(id, instanceObject);
             }
         }
-    },
-    unload: function (callback) {
-        if (gpio) {
-            gpio.destroy(function () {
-                if (callback) callback ();
-            });
-        } else {
-            if (callback) callback ();
+
+        const adapterObjects = await this.getAdapterObjectsAsync();
+        for (const id of Object.keys(adapterObjects)) {
+            objects[id] = true; //object already exists.
         }
+        // replaced by temperature.disk_temp in 5.0.0
+        const nvmeTemp = `${this.namespace}.temperature.nvme_temp`;
+        if (objects[nvmeTemp]) {
+            await this.delObjectAsync(nvmeTemp);
+            delete objects[nvmeTemp];
+        }
+        this.log.debug('received all objects');
+        this.gpioControl = new GpioControl(this, this.log);
+        await this.subscribeStatesAsync('*');
+        await main(this);
+        await this.initPorts();
     }
-});
 
-function writeGpio(port, value) {
-    port = parseInt(port, 10);
-    if (!adapter.config.gpios[port] || !adapter.config.gpios[port].enabled) {
-        adapter.log.warn('Port ' + port + ' is not writable, because disabled.');
-        return;
-    } else if (adapter.config.gpios[port].input === 'true' || adapter.config.gpios[port].input === true) {
-        return adapter.log.warn('Port ' + port + ' is configured as input and not writable');
-    }
+    async initPorts() {
+        if (this.config.gpioSettings && this.config.gpioSettings.length) {
+            const gpioPorts = [];
+            const buttonPorts = [];
+            const dhtPorts = [];
 
-    if (value === 'true')  value = true;
-    if (value === 'false') value = false;
-    if (value === '0')     value = false;
-    value = !!value;
+            for (const gpioSetting of this.config.gpioSettings) {
+                // syncPort sets up the object tree.
+                // Do it now so all ready when
+                // physical GPIOs are enabled below.
+                await this.syncPort(gpioSetting);
 
-    try {
-        if (gpio) {
-            gpio.write(port, value, function (err) {
-                if (err) {
-                    adapter.log.error(err);
-                } else {
-                    adapter.log.debug('Written ' + value + ' into port ' + port);
-                    adapter.setState('gpio.' + port + '.state', value, true);
+                // Push port numbers into arrays as required for the setup below.
+                switch (gpioSetting.configuration) {
+                    case 'in':
+                    case 'out':
+                    case 'outlow':
+                    case 'outhigh':
+                        gpioPorts.push(gpioSetting);
+                        break;
+                    case 'button':
+                        buttonPorts.push(gpioSetting);
+                        break;
+                    case 'dht11':
+                    case 'dht22':
+                        dhtPorts.push(gpioSetting);
+                        break;
+                    default:
+                        this.log.error(`Cannot setup port ${gpioSetting.gpio}: invalid direction type.`);
                 }
+            }
+
+            //clean up unsued gpio objects:
+            for (const id of Object.keys(objects)) {
+                let num = -1;
+                if (id.match(/^(rpi2\.\d+\.)?gpio\.\d+$/)) {
+                    if (id.startsWith(`${this.namespace}.gpio.`)) {
+                        num = parseInt(id.split('.')[3], 10);
+                    }
+                    if (id.startsWith('gpio.')) {
+                        num = parseInt(id.split('.')[1], 10);
+                    }
+                }
+                if (num > 0) {
+                    const configuredPort = this.config.gpioSettings.find(g => g.gpio === num);
+                    if (!configuredPort) {
+                        this.log.debug(`Deleting unused gpio settings for ${num}`);
+                        await this.delObjectAsync(id, { recursive: true });
+                    }
+                }
+            }
+
+            if (this.gpioControl) {
+                await this.gpioControl.setupGpio(gpioPorts, buttonPorts);
+            }
+            if (dhtPorts.length) {
+                this.dhtControl = new DhtControl(this);
+                await this.dhtControl.setup(dhtPorts);
+            }
+        } else {
+            this.log.info('GPIO ports are not configured');
+        }
+    }
+
+    /**
+     * Create ioBroker Objects for gpio port.
+     *
+     * @param data {object} from config.
+     * @returns {Promise<void>}
+     */
+    async syncPort(data) {
+        data.isGpio =
+            data.configuration === 'in' ||
+            data.configuration === 'out' ||
+            data.configuration === 'outlow' ||
+            data.configuration === 'outhigh';
+        data.isButton = data.configuration === 'button';
+        data.isTempHum = data.configuration === 'dht11' || data.configuration === 'dht22';
+        data.isInput = data.configuration === 'in' || data.isButton || data.isTempHum;
+
+        const channelName = `gpio.${data.gpio}`;
+        await this.extendObject(channelName, {
+            type: 'channel',
+            common: {
+                name: data.label === '' ? `GPIO ${data.gpio}` : data.label,
+                role: 'info',
+            },
+        });
+
+        const stateName = `gpio.${data.gpio}.state`;
+        if (data.isGpio) {
+            // extendObject creates one if it doesn't exist - the same below
+            await this.extendObject(stateName, {
+                common: {
+                    name: `GPIO ${data.gpio}`,
+                    type: 'boolean',
+                    role: data.isInput ? 'indicator' : 'switch',
+                    read: data.isInput,
+                    write: !data.isInput,
+                },
+                native: {},
+                type: 'state',
             });
         } else {
-            adapter.log.error('GPIO is not initialized!');
+            await this.delObjectAsync(stateName);
         }
-    } catch (error) {
-        adapter.log.error('Cannot write port ' + port + ': ' + error);
+        await this.syncPortDirection(data);
+        await this.syncPortButton(data);
+        await this.syncPortTempHum(data);
+    }
+
+    /**
+     * Create/Delect Object for GPIO button
+     *
+     * @param data {object} from config
+     * @returns {Promise<void>}
+     */
+    async syncPortButton(data) {
+        const buttonEventsOLD = ['pressed', 'clicked', 'clicked_pressed', 'double_clicked', 'released'];
+        for (const eventName of buttonEventsOLD) {
+            const stateName = `gpio.${data.gpio}.${eventName}`;
+            await this.delObjectAsync(stateName);
+        }
+        for (const eventName of buttonEvents) {
+            const stateName = `gpio.${data.gpio}.${eventName}`;
+            if (data.isButton) {
+                await this.extendObject(stateName, {
+                    common: {
+                        name: `GPIO ${data.gpio} ${eventName}`,
+                        type: 'boolean',
+                        role: 'button',
+                        read: false,
+                        write: true,
+                    },
+                    native: {},
+                    type: 'state',
+                });
+            } else {
+                //await this.delObjectAsync(stateName);
+                //Do not delete 'state' as this is used above. TODO: clean up code, when decided if buttons are ever supported.
+            }
+        }
+    }
+
+    /**
+     * Create/Delete ioBroker Objects for gpio temperature, humidity and dew point.
+     *
+     * @param data {object} from config
+     * @returns {Promise<void>}
+     */
+    async syncPortTempHum(data) {
+        if (data.isTempHum) {
+            await this.extendObject(temperatureStateName(data.gpio), {
+                common: {
+                    name: `GPIO ${data.gpio} temperature`,
+                    type: 'number',
+                    role: 'value.temperature',
+                    read: true,
+                    write: false,
+                },
+                native: {},
+                type: 'state',
+            });
+        } else {
+            await this.delObjectAsync(temperatureStateName(data.gpio));
+        }
+        if (data.isTempHum) {
+            await this.extendObject(humidityStateName(data.gpio), {
+                common: {
+                    name: `GPIO ${data.gpio} humidity`,
+                    type: 'number',
+                    role: 'value.humidity',
+                    read: true,
+                    write: false,
+                },
+                native: {},
+                type: 'state',
+            });
+        } else {
+            await this.delObjectAsync(humidityStateName(data.gpio));
+        }
+        if (data.isTempHum) {
+            await this.extendObject(dewPointStateName(data.gpio), {
+                common: {
+                    name: `GPIO ${data.gpio} dew point`,
+                    type: 'number',
+                    role: 'value.temperature.dewpoint',
+                    unit: '°C',
+                    read: true,
+                    write: false,
+                },
+                native: {},
+                type: 'state',
+            });
+        } else {
+            await this.delObjectAsync(dewPointStateName(data.gpio));
+        }
+    }
+
+    /**
+     * Create ioBroker Objects for a gpio button.
+     *
+     * @param data {object} from config
+     * @returns {Promise<void>}
+     */
+    async syncPortDirection(data) {
+        const stateName = `gpio.${data.gpio}.isInput`;
+        this.log.debug(`Creating ${stateName}`);
+        await this.extendObject(stateName, {
+            common: {
+                name: `GPIO ${data.gpio} direction`,
+                type: 'boolean',
+                role: 'state',
+                read: true,
+                write: false,
+            },
+            native: {},
+            type: 'state',
+        });
+        await this.setState(stateName, data.isInput, true);
+    }
+
+    onStateChange(id, state) {
+        if (state && !state.ack) {
+            this.log.debug(`stateChange for ${id} found state = ${JSON.stringify(state)}`);
+            if (id.indexOf('gpio.') !== -1) {
+                const parts = id.split('.');
+                parts.pop(); // remove state
+                if (this.gpioControl) {
+                    this.gpioControl.writeGpio(parts.pop(), state.val);
+                } else {
+                    this.log.warn('GPIO Control not initialised');
+                }
+            }
+        }
+    }
+
+    async onUnload(callback) {
+        try {
+            // Cancel any intervals
+            for (const interval of intervalTimers) {
+                this.clearInterval(interval);
+            }
+            if (this.dhtControl) {
+                this.dhtControl.unload();
+            }
+            if (this.gpioControl) {
+                await this.gpioControl.unload();
+            }
+            callback();
+        } catch (e) {
+            this.log.warn(`Error on unload: ${e}`);
+            callback();
+        }
     }
 }
 
-var objects;
-var exec;
-var rpi      = {};
-var table    = {};
-var config   = adapter.config;
-var oldstyle = false;
+if (require.main !== module) {
+    // Export the constructor in compact mode
+    /**
+     * @param [options] {object} Adapter options
+     */
+    module.exports = options => new Rpi2(options);
+} else {
+    // otherwise start the instance directly
+    new Rpi2();
+}
 
-function main() {
-    // TODO: Check which Objects we provide
-    setInterval(parser, adapter.config.interval || 60000);
+let objects;
+let exec;
+const rpi = {};
+const table = {};
 
-    var version = process.version;
-    var va = version.split('.');
-    if (va[0] === 'v0' && va[1] === '10') {
-        adapter.log.debug('NODE Version = ' + version + ', we need new exec-sync');
-        exec     = require('sync-exec');
-        oldstyle = true;
+async function main(adapter) {
+    if (anyParserConfigEnabled(adapter)) {
+        intervalTimers.push(
+            adapter.setInterval(() => {
+                parser(adapter);
+            }, adapter.config.interval || 60000),
+        );
+
+        exec = require('node:child_process').execSync;
+        await parser(adapter);
     } else {
-        adapter.log.debug('NODE Version = ' + version + ', we need new execSync');
-        exec     = require('child_process').execSync;
+        adapter.log.info('No parser items enabled - skipping');
+        for (const c of Object.keys(parsers)) {
+            adapter.log.debug(`Cleaning up ${c}`);
+            await adapter.delObjectAsync(`${adapter.name}.${adapter.instance}.${c}`, { recursive: true });
+        }
     }
-    parser();
-    initPorts();
 }
 
-function parser() {
+function anyParserConfigEnabled(adapter) {
+    for (const parserKey of Object.keys(parsers)) {
+        if (adapter.config[`c_${parserKey}`] === true) {
+            adapter.log.debug(`${parserKey} is enabled`);
+            return true;
+        }
+    }
+    return false;
+}
 
+async function parser(adapter) {
     adapter.log.debug('start parsing');
 
     // Workaround, WebStorm
-    if (config === undefined) {
-        config = adapter.config;
-    }
-    for (var c in config) {
-        if (!config.hasOwnProperty(c)) continue;
+    const config = adapter.config;
+    for (const c of Object.keys(parsers)) {
+        adapter.log.debug(`PARSING: ${c}`);
 
-        adapter.log.debug('PARSING: ' + c);
-
-        if (c.indexOf('c_') !== 0 && config['c_' + c] === true) {
+        if (config[`c_${c}`] === true) {
             table[c] = new Array(20);
-            var o = config[c];
-            for (var i in o) {
-                if (!o.hasOwnProperty(i)) continue;
-                adapter.log.debug('    PARSING: ' + i);
-                var object = o[i];
-                var command = object.command;
-                var regexp;
+            const o = parsers[c];
+            for (const i of Object.keys(o)) {
+                adapter.log.debug(`    PARSING: ${i}`);
+                const object = o[i];
+                const command = object.command;
+                let regexp;
                 if (object.multiline !== undefined) {
                     regexp = new RegExp(object.regexp, 'm');
                 } else {
                     regexp = new RegExp(object.regexp);
                 }
-                var post = object.post;
+                const post = object.post;
 
-                adapter.log.debug('---> ' + command);
+                adapter.log.debug(`---> ${command}`);
 
-                var stdout;
+                let stdout;
                 try {
-                    if (oldstyle) {
-                        stdout = exec(command).stdout;
-                    } else {
-                        stdout = exec(command).toString();
-                    }
-                    adapter.log.debug('------------- ' + stdout);
+                    stdout = exec(command).toString();
+                    adapter.log.debug(`------------- ${stdout}`);
                 } catch (er) {
                     adapter.log.debug(er.stack);
-                    if (er.pid) console.log('%s (pid: %d) exited with status %d',
-                        er.file, er.pid, er.status);
-                    // do not process if exec fails 
+                    if (er.pid) {
+                        console.log('%s (pid: %d) exited with status %d', er.file, er.pid, er.status);
+                    }
+                    // do not process if exec fails
                     continue;
                 }
 
-                var match = regexp.exec(stdout);
-                adapter.log.debug('---> REGEXP: ' + regexp);
+                const match = regexp.exec(stdout);
+                adapter.log.debug(`---> REGEXP: ${regexp}`);
                 if (match !== undefined && match !== null && match.length !== undefined) {
-                    adapter.log.debug('GROUPS: ' + match.length);
+                    adapter.log.debug(`GROUPS: ${match.length}`);
                 }
-                // TODO: if Group Match is bigger then 2
-                // split groups and header into seperate objects
+                // TODO: if Group Match is bigger than 2
+                // split groups and header into separate objects
                 if (match !== undefined && match !== null && match.length > 2) {
-                    var lname = i.split(',');
-                    for (var m = 1; m < match.length; m++) {
-                        var value = match[m];
-                        var name = lname[m - 1];
-                        adapter.log.debug('MATCHING: ' + value);
-                        adapter.log.debug('NAME: ' + name + ', VALULE: ' + value);
+                    const lname = i.split(',');
+                    for (let m = 1; m < match.length; m++) {
+                        const value = match[m];
+                        const name = lname[m - 1];
+                        adapter.log.debug(`MATCHING: ${value}`);
+                        adapter.log.debug(`NAME: ${name}, VALULE: ${value}`);
 
                         rpi[name] = value;
                         table[c][i] = value;
                     }
                 } else {
-                    adapter.log.debug('---> POST:   ' + post);
-                    var value;
+                    adapter.log.debug(`---> POST:   ${post}`);
+                    let value;
                     if (match !== undefined && match !== null) {
                         value = match[1];
                     } else {
@@ -202,291 +456,140 @@ function parser() {
     }
 
     // TODO: Parse twice to get post data and evaluate
-    for (c in config) {
-        if (!config.hasOwnProperty(c)) continue;
-        adapter.log.debug('CURRENT = ' + c + ' ' + config['c_' + c]);
-        adapter.log.debug(c.indexOf('c_'));
-        if (c.indexOf('c_') !== 0 && config['c_' + c]) {
+    for (const c of Object.keys(parsers)) {
+        adapter.log.debug(`CURRENT = ${c} ${config[`c_${c}`]}`);
+        adapter.log.debug(String(c.indexOf('c_')));
+        if (config[`c_${c}`] === true) {
             if (objects[c] === undefined) {
-                var stateObj = {
+                const stateObj = {
                     common: {
-                        name:   c, // You can add here some description
-                        role:   'sensor'
+                        name: c, // You can add here some description
+                        role: 'sensor',
                     },
-                    type:   'device',
-                    _id:    c
+                    type: 'device',
+                    _id: c,
                 };
 
-                adapter.extendObject(c, stateObj);
+                await adapter.extendObject(c, stateObj);
+                objects[c] = true; //remember that we created the object.
             }
-            var o = config[c];
-            for (var i in o) {
-                if (!o.hasOwnProperty(i)) continue;
-                var object = o[i];
-                var command = object.command;
-                var post = object.post;
+            const o = parsers[c];
+            for (const i of Object.keys(o)) {
+                const object = o[i];
+                const post = object.post;
 
-                adapter.log.debug('---> POST:   ' + post + ' for ' + i + ' in ' + o);
-                var value;
+                adapter.log.debug(`---> POST:   ${post} for ${i} in ${o}`);
+                let value;
 
-                var lname = i.split(',');
+                const lname = i.split(',');
                 if (lname !== undefined && lname.length > 1) {
-                    for (var m = 0; m < lname.length; m++) {
-                        var name = lname[m];
+                    for (let m = 0; m < lname.length; m++) {
+                        const name = lname[m];
                         value = rpi[name];
 
                         // TODO: Check if value is number and format it 2 Digits
                         if (!isNaN(value)) {
                             value = parseFloat(value);
-                            var re = new RegExp(/^\d+\.\d+$/);
-                            if (re.exec(value)) {
-                                value = value.toFixed(2);
+                            const re = new RegExp(/^\d+\.\d+$/);
+                            if (!re.exec(value.toString())) {
+                                value = parseFloat(value.toFixed(2));
                             }
                         }
 
-                        adapter.log.debug('MATCHING: ' + value);
-                        adapter.log.debug('NAME: ' + name + ' VALULE: ' + value);
+                        adapter.log.debug(`MATCHING: ${value}`);
+                        adapter.log.debug(`NAME: ${name} VALUE: ${value}`);
 
-                        var objectName = adapter.name + '.' + adapter.instance + '.' + c + '.' + name;
-                        adapter.log.debug('SETSTATE FOR ' + objectName + ' VALUE = ' + value);
+                        const objectName = `${adapter.name}.${adapter.instance}.${c}.${name}`;
+                        adapter.log.debug(`SETSTATE FOR ${objectName} VALUE = ${value}`);
                         if (objects[objectName] === undefined) {
-                            // TODO Create an Objecttree
-                            var stateObj = {
+                            const stateObj = {
                                 common: {
-                                    name:  objectName, // You can add here some description
-                                    read:  true,
+                                    name: objectName, // You can add here some description
+                                    read: true,
                                     write: false,
                                     state: 'state',
-                                    role:  'value',
-                                    type:  'number'
+                                    role: object.role || 'value',
+                                    type: 'number',
                                 },
                                 type: 'state',
-                                _id: objectName
                             };
-                            adapter.extendObject(objectName, stateObj);
+                            await adapter.extendObject(objectName, stateObj);
+                            objects[objectName] = true; //remember that we created the object.
                         }
-                        adapter.setState(objectName, {
+                        await adapter.setStateAsync(objectName, {
                             val: value,
-                            ack: true
+                            ack: true,
                         });
                     }
                 } else {
                     value = rpi[i];
                     if (value !== undefined && value !== '' && value !== null) {
                         if (post.indexOf('$1') !== -1) {
-                            adapter.log.debug('VALUE: ' + value + ' POST: ' + post);
+                            adapter.log.debug(`VALUE: ${value} POST: ${post}`);
                             try {
                                 value = eval(post.replace('$1', value));
                             } catch (e) {
-                                adapter.log.error('Cannot evaluate: ' + post.replace('$1', value));
+                                adapter.log.error(`Cannot evaluate: ${post.replace('$1', value)}: ${e}`);
                                 value = NaN;
                             }
                         }
                         // TODO: Check if value is number and format it 2 Digits
                         if (!isNaN(value)) {
                             value = parseFloat(value);
-                            var r = new RegExp(/^\d+\.\d+$/);
-                            if (r.exec(value)) {
-                                value = value.toFixed(2);
+                            const r = new RegExp(/^\d+\.\d+$/);
+                            if (r.exec(value.toString())) {
+                                value = parseFloat(value.toFixed(2));
                             }
                         }
 
-                        var objectName = adapter.name + '.' + adapter.instance + '.' + c + '.' + i;
-                        adapter.log.debug('SETSTATE FOR ' + objectName + ' VALUE = ' + value);
+                        const objectName = `${adapter.name}.${adapter.instance}.${c}.${i}`;
+                        adapter.log.debug(`SETSTATE FOR ${objectName} VALUE = ${value}`);
                         if (objects[objectName] === undefined) {
-                            // TODO Create an Objecttree
-                            var stateObj = {
+                            const stateObj = {
                                 common: {
-                                    name:  objectName, // You can add here some description
-                                    read:  true,
+                                    name: objectName, // You can add here some description
+                                    read: true,
                                     write: false,
                                     state: 'state',
-                                    role:  'value',
-                                    type:  'mixed'
+                                    role: object.role || 'value',
+                                    type: ['number', 'boolean', 'string'].includes(typeof value)
+                                        ? typeof value
+                                        : 'mixed',
                                 },
                                 type: 'state',
-                                _id: objectName
                             };
-                            adapter.extendObject(objectName, stateObj);
+                            await adapter.extendObject(objectName, stateObj);
+                            objects[objectName] = true; //remember that we created the object.
                         }
-                        adapter.setState(objectName, {
+                        await adapter.setStateAsync(objectName, {
                             val: value,
-                            ack: true
+                            ack: true,
                         });
                     } else {
-                        if (i === 'wifi_send' || i === 'wifi_received') {
-                            adapter.log.debug('No Value found for ' + i);
-                        } else {
-                            adapter.log.error('No Value found for ' + i);
+                        if (object.optional) {
+                            // hardware, tool or sudo rule missing on this system
+                            adapter.log.debug(`No Value found for ${i}`);
+                        } else if (!errorsLogged[i]) {
+                            adapter.log.error(`No Value found for ${i}`);
+                            errorsLogged[i] = true;
                         }
                     }
                 }
             }
-        }
-    }
-}
-
-function readValue(port) {
-    if (!gpio) return adapter.log.error('GPIO is not initialized!');
-
-    gpio.read(port, function (err, value) {
-        if (err) {
-            adapter.log.error('Cannot read port ' + port + ': ' + err);
-        } else {
-            adapter.setState('gpio.' + port + '.state', !!value, true);
-        }
-    });
-}
-
-function syncPort(port, data, callback) {
-    adapter.getObject('gpio.' + port + '.state', function (err, obj) {
-        if (data.enabled) {
-            if (data.input === 'true')  data.input = true;
-            if (data.input === 'false') data.input = false;
-
-            if (err || !obj || !obj.common) {
-                obj = {
-                    common: {
-                        name:  'GPIO ' + port,
-                        type:  'boolean',
-                        role:  data.input ? 'indicator' : 'switch',
-                        read:  data.input,
-                        write: !data.input
-                    },
-                    native: {
-
-                    },
-                    type: 'state'
-                };
-                adapter.setObject('gpio.' + port + '.state', obj, function () {
-                    syncPortDirection(port, data, callback);
-                });
-            } else {
-                if (obj.common.read !== data.input) {
-                    obj.common.read  = data.input;
-                    obj.common.write = !data.input;
-                    adapter.setObject('gpio.' + port + '.state', obj, function () {
-                        syncPortDirection(port, data, callback);
-                    });
-                } else {
-                    syncPortDirection(port, data, callback);
-                }
-            }
-        } else {
-            if (obj && obj.common) {
-                adapter.delObject('gpio.' + port + '.state', function () {
-                    adapter.delState('gpio.' + port + '.state', function () {
-                        syncPortDirection(port, data, callback);
-                    });
-                });
-            } else {
-                syncPortDirection(port, data, callback);
-            }
-        }
-    });
-}
-
-function syncPortDirection(port, data, callback) {
-    adapter.getObject('gpio.' + port + '.isInput', function (err, obj) {
-        if (data.enabled) {
-            if (err || !obj || !obj.common) {
-                obj = {
-                    common: {
-                        name:  'GPIO ' + port + ' direction',
-                        type:  'boolean',
-                        role:  'state',
-                        read:  true,
-                        write: false
-                    },
-                    native: {
-
-                    },
-                    type: 'state'
-                };
-                adapter.setObject('gpio.' + port + '.isInput', obj, function () {
-                    adapter.setState('gpio.' + port + '.isInput', !data.input, true, callback);
-                });
-            } else {
-                adapter.setState('gpio.' + port + '.isInput', data.input, true, callback);
-            }
-        } else {
-            if (obj && obj.common) {
-                adapter.delObject('gpio.' + port + '.isInput', function () {
-                    adapter.delState('gpio.' + port + '.isInput', callback);
-                });
-            } else {
-                if (callback) callback();
-            }
-        }
-    });
-}
-
-function initPorts() {
-    var anyEnabled = false;
-    var anyInputs  = false;
-
-    if (adapter.config.gpios && adapter.config.gpios.length) {
-        for (var pp = 0; pp < adapter.config.gpios.length; pp++) {
-            if (!adapter.config.gpios[pp] || !adapter.config.gpios[pp].enabled) continue;
-            anyEnabled = true;
-
-            if (adapter.config.gpios[pp].input === 'true' || adapter.config.gpios[pp].input === true) {
-                anyInputs = true;
-            }
-        }
-    }
-
-    if (anyEnabled) {
-        try {
-            gpio = require('rpi-gpio');
-            gpio.setMode(gpio.MODE_BCM);
-        } catch (e) {
-            gpio = null;
-            console.error('cannot use GPIO: ' + e);
-        }
-    }
-
-    if (adapter.config.gpios && adapter.config.gpios.length) {
-        var count = 0;
-        for (var p = 0; p < adapter.config.gpios.length; p++) {
-
-            if (!adapter.config.gpios[p]) continue;
-
-            syncPort(p, adapter.config.gpios[p] || {});
-
-            if (gpio && adapter.config.gpios[p].enabled) {
-                if (adapter.config.gpios[p].input === 'true')  adapter.config.gpios[p].input = true;
-                if (adapter.config.gpios[p].input === 'false') adapter.config.gpios[p].input = false;
-
-                if (adapter.config.gpios[p].input) {
-                    count++;
-                    (function (port){
-                        gpio.setup(port, gpio.DIR_IN, gpio.EDGE_BOTH, function (err) {
-                            if (!err) {
-                                readValue(port);
-                            } else {
-                                adapter.log.error('Cannot setup port ' + port + ' as input: ' + err);
-                            }
-                            if (!--count) {
-                                adapter.log.debug('Register onchange handler');
-                                // register on change handler
-                                gpio.on('change', function (port, value) {
-                                    adapter.log.debug('GPIO change on port ' + port + ': ' + value);
-                                    adapter.setState('gpio.' + port + '.state', !!value, true);
-                                });
-                            }
-                        });
-                    })(p);
-                } else {
-                    (function (port){
-                        gpio.setup(port, gpio.DIR_OUT, function (err) {
-                            if (err) adapter.log.error('Cannot setup port ' + port + ' as output: ' + err);
-                        });
-                    })(p);
+        } else if (c.indexOf('c_') !== 0 && config[`c_${c}`] === false) {
+            //is config, but disabled.
+            const folderId = `${adapter.namespace}.${c}`;
+            adapter.log.debug(`${c} disabled -> clean up.`);
+            if (objects[folderId]) {
+                //if object exists, delete it.
+                await adapter.delObjectAsync(folderId, { recursive: true });
+                delete objects[folderId];
+                for (const id of Object.keys(objects)) {
+                    if (id.startsWith(folderId)) {
+                        delete objects[id];
+                    }
                 }
             }
         }
-    } else {
-        adapter.log.info('GPIO ports are not configured');
     }
 }
